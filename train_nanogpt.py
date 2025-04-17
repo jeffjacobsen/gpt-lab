@@ -681,20 +681,16 @@ for step in range(args.train_steps + 1):
         t0 = time.perf_counter()
 
     # --------------- TRAINING SECTION -----------------
-    loss = torch.tensor([0.], device="cuda")
-    for _ in range(args.grad_acc_steps):
-        inputs, targets = next(train_loader)
-        torch.compiler.cudagraph_mark_step_begin()
-        step_loss = model(inputs, targets)
-        loss += step_loss / args.grad_acc_steps
+    inputs, targets = next(train_loader)
+    loss = model(inputs, targets)
     loss.backward()
         
     if world_size > 1:
         for param in model.parameters():
             dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
     # set optimization hyperparameters
-    for param_group in optimizer.param_groups:
-        param_group["lr"] = get_lr(step)
+    #for param_group in optimizer.param_groups:
+    #    param_group["lr"] = get_lr(step)
     # step the optimizers
     optimizer.step()
     # null the gradients
