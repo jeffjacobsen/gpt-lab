@@ -560,7 +560,7 @@ print0("warming up kernels...", console=True)
 
 # Attempt to limit memory fragmentation
 if hasattr(torch.cuda, 'memory_stats'):
-    print(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
+    print0(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
 # Warmup the training kernels, then re-initialize the state so we aren't cheating
 warmup_steps = 3
@@ -584,7 +584,7 @@ optimizer.load_state_dict(initial_state["optimizer"])
 del initial_state # TODO optionally save initial state of model jic someone wants to test different seeds
 
 if hasattr(torch.cuda, 'memory_stats'):
-    print(f"After warmup GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
+    print0(f"After warmup GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
 print0("kernels are toasty", console=True)
 
@@ -614,7 +614,7 @@ for step in range(args.train_steps + 1):
         
         # Ensure we validate on enough tokens while keeping memory usage reasonable
         val_batch_size = world_size * args.batch_size * args.block_size
-        val_steps = max(1, min(16, args.val_tokens // val_batch_size))
+        val_steps = 4
         val_tokens_used = val_batch_size * val_steps
         print0(f"Validating on {val_tokens_used} tokens ({val_steps} steps with {val_batch_size} batch size)", console=True)
         
