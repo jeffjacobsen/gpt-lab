@@ -165,10 +165,7 @@ class GPT(nn.Module):
         if target_seq is None:
             return logits
         else:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
-            print(loss)
-            return loss
-
+            return F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
 
 
     def get_num_params(self):
@@ -312,12 +309,10 @@ class Hyperparameters:
     # data
     train_files = "data/fineweb*_train_*.bin" # input .bin to train on
     val_files = "data/fineweb*_val_*.bin" # input .bin to eval validation loss on
-    block_size = 1024 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
+    block_size = 1024 # 
     batch_size = 16 # 
     # optimization
     train_steps = 20#_000 # number of training steps to run
-    grad_acc_steps = 1 # number of gradient accumulation steps per training step
-    cooldown_frac = 0.4 # fraction of training spent cooling down the learning rate
     # architecture
     tokenizer = "gpt4regex_v50256_n1000000000.pkl"#134217728.pkl" # any .pkl file in tokenizers/
     vocab_size = 50257 # should be the tokenizer's size plus any special tokens defined in this script
@@ -325,21 +320,16 @@ class Hyperparameters:
     num_layers = 2  # 124m param model should be 12
     num_heads = 12   # 124m param model should be 6
     model_dim = 768  # must be divisible by num_heads (n_embed)
-    head_dim = None  # if None, will be set to model_dim // num_heads
     mlp_ratio = 4  # 124m param model should be 4
     # evaluation and logging
-    val_loss_every = 1 # every how many steps to evaluate val loss? 0 for only at the end
+    val_loss_every = 10 # every how many steps to evaluate val loss? 0 for only at the end
     save_model = False
     # reproducibility
     seed: int | None = None # Optional random seed for initialization control
 
     def __post_init__(self):
         # Validate and set derived param eters
-        if self.head_dim is None:
-            self.head_dim = self.model_dim // self.num_heads
-        assert self.head_dim in [2 ** i for i in range(1, 10)], f"head_dim must be a power of 2, got {self.head_dim}"
         assert self.mlp_ratio > 0, f"mlp_ratio must be positive, got {self.mlp_ratio}"
-        assert self.grad_acc_steps >= 1, f"grad_acc steps must be int >= 1"
 
     @classmethod
     def from_args(cls):
@@ -349,20 +339,18 @@ class Hyperparameters:
         # Data arguments
         parser.add_argument('--train_files', type=str, help='Pattern for training data files')
         parser.add_argument('--val_files', type=str, help='Pattern for validation data files')
-        parser.add_argument('--val_tokens', type=int, help='Number of tokens for validation')
         
         # Optimization arguments
         parser.add_argument('--train_steps', type=int, help='Number of training iterations')
-        parser.add_argument('--grad_acc_steps', type=int, help='Number of gradient accumulation steps per training iteration')
-        parser.add_argument('--cooldown_frac', type=float, help='Fraction of training for learning rate cooldown')
         
         # Architecture arguments
+        parser.add_argument('--block_size', type=inputs, help='Block size')
+        parser.add_argument('--batch_size', type=int, help='Batch size')
         parser.add_argument('--tokenizer', type=str, help='Tokenizer file name in tokenizers/ directory')
         parser.add_argument('--vocab_size', type=int, help='Vocabulary size')
         parser.add_argument('--num_layers', type=int, help='Number of transformer layers')
         parser.add_argument('--num_heads', type=int, help='Number of attention heads')
         parser.add_argument('--model_dim', type=int, help='Model embedding dimension')
-        parser.add_argument('--head_dim', type=int, help='Dimension per attention head')
         parser.add_argument('--mlp_ratio', type=int, help='MLP hidden dim ratio')
         
         # Other options
