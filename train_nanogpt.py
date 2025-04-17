@@ -52,13 +52,9 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x: Tensor):
         B, T, C = x.size() # batch size, sequence length
-        qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.model_dim, dim=2)
-        print(q.size())
-        print(k.size())
-        print(v.size())        
+        qkv = self.c_attn(x)    
+        q, k, v = qkv.chunk(3, dim=2)
         k = k.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
-        print(k.size())
         q = q.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # flash attention
