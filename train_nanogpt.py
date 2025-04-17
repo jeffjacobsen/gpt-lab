@@ -110,6 +110,8 @@ class GPT(nn.Module):
         super().__init__()
         self.model_dim = model_dim
         self.max_seq_len = max_seq_len
+        self.num_layers = num_layers
+        
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, model_dim),
             wpe = nn.Embedding(max_seq_len, model_dim),
