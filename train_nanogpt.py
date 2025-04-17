@@ -70,7 +70,7 @@ class MLP(nn.Module):
         super().__init__()
         hdim = int(mlp_ratio * model_dim)
         self.c_fc = nn.Linear(model_dim, hdim)
-        self.gelu    = nn.GELU(approximate='tanh')
+        self.gelu = nn.GELU(approximate='tanh')
         self.c_proj = nn.Linear(hdim, model_dim)
         self.c_proj.NANOGPT_SCALE_INIT = 1
 
@@ -115,7 +115,7 @@ class GPT(nn.Module):
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, model_dim),
-            wpe = nn.Embedding(max_seq_len, model_dim),
+            wpe = nn.Embedding(model_dim, model_dim),
             h = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio, max_seq_len) for _ in range(num_layers)]),
             ln_f = nn.LayerNorm(model_dim),
         ))
@@ -252,13 +252,13 @@ def _load_data_shard(file: Path):
         assert nbytes == 2 * num_tokens, "number of tokens read does not match header"
     return tokens
 
-def distributed_data_generator(filename_pattern: str, batch_size: int, model_dim: int, rank: int, world_size: int, print_stats=True):
+def distributed_data_generator(filename_pattern: str, batch_size: int, block_size: int, rank: int, world_size: int, print_stats=True):
     files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
     if not files:
         raise ValueError(f"No files found matching pattern: {filename_pattern}")
     
     B = batch_size
-    T = model_dim
+    T = block_size
     BT = B * T
     
     # Calculate total tokens across all shards
@@ -306,7 +306,7 @@ class Hyperparameters:
     # data
     train_files = "data/fineweb*_train_*.bin" # input .bin to train on
     val_files = "data/fineweb*_val_*.bin" # input .bin to eval validation loss on
-    val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
+    block_size = 1024 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
     batch_size = 64 # 
     # optimization
     train_steps = 20#_000 # number of training steps to run
@@ -318,7 +318,7 @@ class Hyperparameters:
     # model size - new parameters for GPUs w/ at least 8GB VRAM during testing
     num_layers = 12  # 124m param model should be 12
     num_heads = 4   # 124m param model should be 6
-    model_dim = 1024  # must be divisible by num_heads
+    model_dim = 768  # must be divisible by num_heads (n_embed)
     head_dim = None  # if None, will be set to model_dim // num_heads
     mlp_ratio = 4  # 124m param model should be 4
     # evaluation and logging
@@ -526,6 +526,7 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
                        num_layers=args.num_layers,
                        num_heads=args.num_heads, 
                        model_dim=args.model_dim,
+                       max_seq_len=args.block_size,
                        mlp_ratio=args.mlp_ratio).cuda()
 print0(f'{model.get_num_params()} parameters', console=True)
 print0(model)
@@ -589,7 +590,7 @@ print0("kernels are toasty", console=True)
 #        Training and validation       #
 ########################################
 
-train_loader = distributed_data_generator(args.train_files, args.model_dim, args.batch_size, rank, world_size)
+train_loader = distributed_data_generator(args.train_files, args.batch_size, args.block_size, rank, world_size)
 
 training_time_ms = 0
 # start the clock
@@ -610,12 +611,12 @@ for step in range(args.train_steps + 1):
         model.eval()
         
         # Ensure we validate on enough tokens while keeping memory usage reasonable
-        val_batch_size = world_size * args.batch_size * args.model_dim
+        val_batch_size = world_size * args.batch_size * args.block_size
         val_steps = max(1, min(16, args.val_tokens // val_batch_size))
         val_tokens_used = val_batch_size * val_steps
         print0(f"Validating on {val_tokens_used} tokens ({val_steps} steps with {val_batch_size} batch size)", console=True)
         
-        val_loader = distributed_data_generator(args.val_files, args.model_dim, args.batch_size, rank, world_size, print_stats=False)
+        val_loader = distributed_data_generator(args.val_files, args.batch_size, args.block_size, rank, world_size, print_stats=False)
         val_loss = 0
         with torch.no_grad():
             for i in range(val_steps):
