@@ -344,7 +344,7 @@ class Hyperparameters:
         parser.add_argument('--train_steps', type=int, help='Number of training iterations')
         
         # Architecture arguments
-        parser.add_argument('--block_size', type=inputs, help='Block size')
+        parser.add_argument('--block_size', type=int, help='Block size')
         parser.add_argument('--batch_size', type=int, help='Batch size')
         parser.add_argument('--tokenizer', type=str, help='Tokenizer file name in tokenizers/ directory')
         parser.add_argument('--vocab_size', type=int, help='Vocabulary size')
