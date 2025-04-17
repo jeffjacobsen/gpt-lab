@@ -259,7 +259,7 @@ def distributed_data_generator(filename_pattern: str, batch_size: int, model_dim
     
     B = batch_size
     T = model_dim
-    BT = B+T
+    BT = B * T
     
     # Calculate total tokens across all shards
     total_tokens = 0
@@ -526,7 +526,6 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
                        num_layers=args.num_layers,
                        num_heads=args.num_heads, 
                        model_dim=args.model_dim,
-                       batch_size=args.batch_size,
                        mlp_ratio=args.mlp_ratio).cuda()
 print0(f'{model.get_num_params()} parameters', console=True)
 print0(model)
@@ -611,7 +610,7 @@ for step in range(args.train_steps + 1):
         model.eval()
         
         # Ensure we validate on enough tokens while keeping memory usage reasonable
-        val_batch_size = world_size * args.val_seq_len
+        val_batch_size = world_size * args.batch_size * args.model_dim
         val_steps = max(1, min(16, args.val_tokens // val_batch_size))
         val_tokens_used = val_batch_size * val_steps
         print0(f"Validating on {val_tokens_used} tokens ({val_steps} steps with {val_batch_size} batch size)", console=True)
