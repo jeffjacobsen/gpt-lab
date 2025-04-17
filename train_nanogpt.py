@@ -161,9 +161,7 @@ class GPT(nn.Module):
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
         with autocast():
-            logits = self.lm_head(x[:, :-1, :]) # (B, T, vocab_size)
-            target_seq = target_seq[:, -1]
-        print('Logits Done')
+            logits = self.lm_head(x) # (B, T, vocab_size)
         loss = None
         if target_seq is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
