@@ -120,7 +120,7 @@ class GPT(nn.Module):
         
         # there are only 50257 unique GPT-2 tokens; we extend to nearest multiple of 128 for efficiency.
         # this originates from Karpathy's experiments.
-        self.lm_head = nn.Linear(model_dim,  next_multiple_of_n(vocab_size, n=128), bias=False)
+        self.lm_head = nn.Linear(model_dim, vocab_size, bias=False)
 
         # weight sharing scheme
         self.transformer.wte.weight = self.lm_head.weight
@@ -156,12 +156,9 @@ class GPT(nn.Module):
         # forward the blocks of the transformer
         for block in self.transformer.h:
             x = block(x)
-            print('Block')
         # forward the final layernorm and the classifier
-
-        print('Block Done')
         x = self.transformer.ln_f(x)
-        print('Linear Done')
+        print(x.size())
         logits = self.lm_head(x) # (B, T, vocab_size)
         print('Logits Done')
         loss = None
