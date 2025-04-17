@@ -18,6 +18,7 @@ import csv
 import random # Import random for potential future use, though not strictly needed for torch seeding
 import numpy as np # Import numpy for potential future use, set random seed now not to forget to set it later
 import inspect
+import math
 
 from torch.cuda.amp import autocast
 
@@ -537,33 +538,24 @@ print0(model)
 optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device_type='cuda')
 
 # Original lr warmup (Karpathy)
-#max_lr = 6e-4
-#min_lr = max_lr * 0.1
-#warmup_steps = 715
-#max_steps = 19073 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
-#def get_lr(it):
-#    # 1) linear warmup for warmup_iters steps
-#    if it < warmup_steps:
-#        return max_lr * (it+1) / warmup_steps
-#    # 2) if it > lr_decay_iters, return min learning rate
-#    if it > max_steps:
-#        return min_lr
-#    # 3) in between, use cosine decay down to min learning rate
-#    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
-#    assert 0 <= decay_ratio <= 1
-#    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
-#    return min_lr + coeff * (max_lr - min_lr)
-#
+max_lr = 6e-4
+min_lr = max_lr * 0.1
+warmup_steps = 715
+max_steps = 19073 # 19,073 steps is ~1 epoch, if data is 10B tokens and batch size 0.5M tokens
+def get_lr(it):
+    # 1) linear warmup for warmup_iters steps
+    if it < warmup_steps:
+        return max_lr * (it+1) / warmup_steps
+    # 2) if it > lr_decay_iters, return min learning rate
+    if it > max_steps:
+        return min_lr
+    # 3) in between, use cosine decay down to min learning rate
+    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
+    return min_lr + coeff * (max_lr - min_lr)
 
-# learning rate schedule: stable then decay
-def get_lr(step: int):
-    x = step / args.train_steps # progress in training
-    assert 0 <= x < 1
-    if x < 1 - args.cooldown_frac:
-        return 1.0
-    else:
-        w = (1 - x) / args.cooldown_frac
-        return w * 1.0 + (1 - w) * 0.1
+
 
 # Use a more memory-efficient compilation option
 model: nn.Module = torch.compile(model, dynamic=False, mode="reduce-overhead")
