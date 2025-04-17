@@ -54,6 +54,7 @@ class CausalSelfAttention(nn.Module):
         B, T, C = x.size() # batch size, sequence length
         print(B, T, C)
         qkv = self.c_attn(x)
+        print(qkv.size)
         q, k, v = qkv.split(self.num_heads, dim=2)
         print(q.size())
         print(k.size())
