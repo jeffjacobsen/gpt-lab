@@ -162,11 +162,12 @@ class GPT(nn.Module):
         x = self.transformer.ln_f(x)
         #with autocast():
         logits = self.lm_head(x) # (B, T, vocab_size)
-        loss = None
-        if target_seq is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
 
-        return logits, loss
+        if target_seq is None:
+            return logits
+        else:
+            return F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
+
 
 
     def get_num_params(self):
