@@ -155,6 +155,7 @@ class GPT(nn.Module):
         assert T <= self.max_seq_len, f"Cannot forward sequence of length {T}, block size is only {self.max_seq_len}"
         # forward the token and posisition embeddings
         pos = torch.arange(0, T, dtype=torch.long, device=input_seq.device) # shape (T)
+        print(pos.size())
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, model_dim)
         print(pos_emb.size())
         tok_emb = self.transformer.wte(input_seq) # token embeddings of shape (B, T, model_dim)
