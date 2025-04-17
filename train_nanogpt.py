@@ -219,7 +219,8 @@ class GPT(nn.Module):
         self.eval()  # Ensure model is in evaluation mode
         for _ in range(max_new_tokens):
             # Forward pass to get logits
-            logits = self(idx[-self.block_size:] if idx.size(0) > self.block_size else idx)
+            xinput_seq = idx[-self.block_size:] if idx.size(0) > self.block_size else idx
+            logits = self(xinput_seq.unsqueeze(0))
             # Focus on the last token's prediction
             logits = logits[0, min(seq_len, self.block_size) - 1, :] / temperature
             # optionally crop the logits to only the top k options
