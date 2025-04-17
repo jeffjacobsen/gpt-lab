@@ -252,13 +252,14 @@ def _load_data_shard(file: Path):
         assert nbytes == 2 * num_tokens, "number of tokens read does not match header"
     return tokens
 
-def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
+def distributed_data_generator(filename_pattern: str, batch_size: int, model_dim: int, rank: int, world_size: int, print_stats=True):
     files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
     if not files:
         raise ValueError(f"No files found matching pattern: {filename_pattern}")
     
-    assert batch_size % world_size == 0
-    local_batch_size = batch_size // world_size
+    B = batch_size
+    T = model_dim
+    BT = B+T
     
     # Calculate total tokens across all shards
     total_tokens = 0
@@ -270,7 +271,7 @@ def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int
         tokens_per_file.append(file_tokens)
     
     # Calculate how many tokens we need for training
-    tokens_needed = args.train_steps * batch_size
+    tokens_needed = args.train_steps * BT
     
     # Determine if we need to cycle and calculate epochs
     will_cycle = total_tokens < tokens_needed
@@ -285,12 +286,12 @@ def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int
     tokens, pos = _load_data_shard(next(file_iter)), 0
     
     while True:
-        if pos + batch_size + 1 >= len(tokens):
+        if pos + BT + 1 >= len(tokens):
             tokens, pos = _load_data_shard(next(file_iter)), 0
-        buf = tokens[pos + rank * local_batch_size:][:local_batch_size + 1]
-        inputs = buf[:-1].to(device="cuda", dtype=torch.int32, non_blocking=True) # no sync on host side;
-        targets = buf[1:].to(device="cuda", dtype=torch.int64, non_blocking=True) # H2D in another stream isn't helpful.
-        pos += batch_size
+        buf = tokens[pos + rank * BT:][:BT + 1]
+        inputs = buf[:-1].view(B, T).to(device="cuda", dtype=torch.int32, non_blocking=True) # no sync on host side;
+        targets = buf[1:].view(B, T).to(device="cuda", dtype=torch.int64, non_blocking=True) # H2D in another stream isn't helpful.
+        pos += BytesWarning
         yield inputs, targets
 
 # -----------------------------------------------------------------------------
@@ -306,8 +307,7 @@ class Hyperparameters:
     train_files = "data/fineweb*_train_*.bin" # input .bin to train on
     val_files = "data/fineweb*_val_*.bin" # input .bin to eval validation loss on
     val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
-    train_seq_len = 8*1024 # Train sequence length
-    val_seq_len = 12*1024 # Sequence length for validation
+    batch_size = 64 # 
     # optimization
     train_steps = 20#_000 # number of training steps to run
     grad_acc_steps = 1 # number of gradient accumulation steps per training step
@@ -321,8 +321,6 @@ class Hyperparameters:
     model_dim = 1024  # must be divisible by num_heads
     head_dim = None  # if None, will be set to model_dim // num_heads
     mlp_ratio = 4  # 124m param model should be 4
-    # memory optimization 
-    hopper = False # Set to True on H100s (and newer?) for improved performance, False on older
     # evaluation and logging
     val_loss_every = 100 # every how many steps to evaluate val loss? 0 for only at the end
     save_model = False
@@ -368,8 +366,6 @@ class Hyperparameters:
         parser.add_argument('--mlp_ratio', type=int, help='MLP hidden dim ratio')
         
         # Other options
-        parser.add_argument('--hopper', action='store_true', help='Set to true on H100s (and newer?) for improved performance')
-        parser.add_argument('--not_hopper', action='store_false', dest='hopper', help='Use if not on a hopper GPU')
         parser.add_argument('--val_loss_every', type=int, help='Evaluate validation loss every N steps')
         parser.add_argument('--save_model', action='store_true', help='Save model checkpoints')
         parser.add_argument('--no_save_model', action='store_false', dest='save_model', help='Disable model checkpoints')
@@ -534,7 +530,7 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
                        num_layers=args.num_layers,
                        num_heads=args.num_heads, 
                        model_dim=args.model_dim,
-                       max_seq_len=max(args.train_seq_len, args.val_seq_len),
+                       batch_size=args.batch_size,
                        mlp_ratio=args.mlp_ratio).cuda()
 print0(f'{model.get_num_params()} parameters', console=True)
 print0(model)
@@ -575,7 +571,7 @@ initial_state = dict(model=copy.deepcopy(model.state_dict()),
 for _ in range(warmup_steps):
     loss = torch.tensor([0.], device="cuda")
     for _ in range(args.grad_acc_steps):
-        inputs = targets = torch.randint(0, args.vocab_size, size=(args.train_seq_len,), device="cuda", dtype=torch.int64)
+        inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size,), device="cuda", dtype=torch.int64)
         step_loss = model(inputs.to(torch.int32), targets)
         loss += step_loss / args.grad_acc_steps
     loss.backward()
@@ -598,7 +594,7 @@ print0("kernels are toasty", console=True)
 #        Training and validation       #
 ########################################
 
-train_loader = distributed_data_generator(args.train_files, world_size * args.train_seq_len, rank, world_size)
+train_loader = distributed_data_generator(args.train_files, args.model_dim, args.batch_size, rank, world_size)
 
 training_time_ms = 0
 # start the clock
@@ -624,7 +620,7 @@ for step in range(args.train_steps + 1):
         val_tokens_used = val_batch_size * val_steps
         print0(f"Validating on {val_tokens_used} tokens ({val_steps} steps with {val_batch_size} batch size)", console=True)
         
-        val_loader = distributed_data_generator(args.val_files, val_batch_size, rank, world_size, print_stats=False)
+        val_loader = distributed_data_generator(args.val_files, args.model_dim, args.batch_size, rank, world_size, print_stats=False)
         val_loss = 0
         with torch.no_grad():
             for i in range(val_steps):
