@@ -567,7 +567,7 @@ initial_state = dict(model=copy.deepcopy(model.state_dict()),
 for _ in range(warmup_steps):
     loss = torch.tensor([0.], device="cuda")
     for _ in range(args.grad_acc_steps):
-        inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size,), device="cuda", dtype=torch.int64)
+        inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size, args.block_size), device="cuda", dtype=torch.int64)
         step_loss = model(inputs.to(torch.int32), targets)
         loss += step_loss / args.grad_acc_steps
     loss.backward()
