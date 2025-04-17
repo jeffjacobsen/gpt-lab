@@ -21,7 +21,7 @@ import inspect
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #Debug
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #Debug
 
 import torch
 torch.empty(1, device="cuda", requires_grad=True).backward() # prevents a bug on some systems
@@ -158,6 +158,7 @@ class GPT(nn.Module):
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, model_dim)
         tok_emb = self.transformer.wte(input_seq) # token embeddings of shape (B, T, model_dim)
         x = tok_emb + pos_emb
+        print(x.size())
         # forward the blocks of the transformer
         for block in self.transformer.h:
             x = block(x)
