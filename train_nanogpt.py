@@ -20,8 +20,8 @@ import numpy as np # Import numpy for potential future use, set random seed now 
 import inspect
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["TORCH_USE_CUDA_DSA"] = "True"
-os.environ["CUDA_LAUNCH_BLOCKING"] = 1
+os.environ["TORCH_USE_CUDA_DSA"] = "1"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import torch
 torch.empty(1, device="cuda", requires_grad=True).backward() # prevents a bug on some systems
