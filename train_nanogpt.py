@@ -42,7 +42,7 @@ class CausalSelfAttention(nn.Module):
     def __init__(self, model_dim: int, num_heads: int, block_size: int):
         super().__init__()
         self.num_heads = num_heads
-        self.block_size = block_size
+        self.model_dim = model_dim
 
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(model_dim, 3 * model_dim)
