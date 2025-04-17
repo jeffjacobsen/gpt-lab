@@ -622,10 +622,6 @@ for step in range(args.train_steps + 1):
         with torch.no_grad():
             for i in range(val_steps):
                 inputs, targets = next(val_loader)
-                # Check if inputs exceed sequence length
-                if inputs.size(0) > args.val_seq_len:
-                    inputs = inputs[:args.val_seq_len]
-                    targets = targets[:args.val_seq_len]
                 val_loss += model(inputs, targets)
         val_loss /= val_steps
         del val_loader
