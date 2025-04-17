@@ -39,10 +39,10 @@ def norm(x: Tensor):
     return F.rms_norm(x, (x.size(-1),))
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, max_seq_len: int):
+    def __init__(self, model_dim: int, num_heads: int, block_size: int):
         super().__init__()
         self.num_heads = num_heads
-        self.block_size = max_seq_len
+        self.block_size = block_size
         # calculate head_dim based on the model dimension
         head_dim = model_dim // num_heads
         self.head_dim = head_dim
@@ -57,7 +57,7 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: Tensor):
         B, T, C = x.size() # batch size, sequence length
         qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.max_seq_len, dim=2)
+        q, k, v = qkv.split(self.block_size, dim=2)
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -83,10 +83,10 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, max_seq_len: int, mlp_ratio: int):
+    def __init__(self, model_dim: int, num_heads: int, block_size: int, mlp_ratio: int):
         super().__init__()
         self.ln_1 = nn.LayerNorm(model_dim)
-        self.attn = CausalSelfAttention(model_dim, num_heads, max_seq_len)
+        self.attn = CausalSelfAttention(model_dim, num_heads, block_size)
         self.ln_2 = nn.LayerNorm(model_dim)
         self.mlp = MLP(model_dim, mlp_ratio)
 
@@ -109,16 +109,16 @@ def next_multiple_of_n(v: float | int, *, n: int):
 #    n_embd: int = 768 # embedding dimension
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size: int, num_layers: int, num_heads: int, model_dim: int, max_seq_len: int, mlp_ratio: int):
+    def __init__(self, vocab_size: int, num_layers: int, num_heads: int, model_dim: int, block_size: int, mlp_ratio: int):
         super().__init__()
         self.model_dim = model_dim
-        self.max_seq_len = max_seq_len
+        self.block_size = block_size
         self.num_layers = num_layers
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, model_dim),
-            wpe = nn.Embedding(max_seq_len, model_dim),
-            h = nn.ModuleList([Block(model_dim, num_heads, max_seq_len, mlp_ratio) for _ in range(num_layers)]),
+            wpe = nn.Embedding(block_size, model_dim),
+            h = nn.ModuleList([Block(model_dim, num_heads, block_size, mlp_ratio) for _ in range(num_layers)]),
             ln_f = nn.LayerNorm(model_dim),
         ))
         
@@ -151,7 +151,7 @@ class GPT(nn.Module):
         
         B, T = input_seq.size()
         print(B, T)
-        assert T <= self.max_seq_len, f"Cannot forward sequence of length {T}, block size is only {self.max_seq_len}"
+        assert T <= self.block_size, f"Cannot forward sequence of length {T}, block size is only {self.block_size}"
         # forward the token and posisition embeddings
         pos = torch.arange(0, T, dtype=torch.long, device=input_seq.device) # shape (T)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, model_dim)
@@ -219,9 +219,9 @@ class GPT(nn.Module):
         self.eval()  # Ensure model is in evaluation mode
         for _ in range(max_new_tokens):
             # Forward pass to get logits
-            logits = self(idx[-self.max_seq_len:] if idx.size(0) > self.max_seq_len else idx)
+            logits = self(idx[-self.block_size:] if idx.size(0) > self.block_size else idx)
             # Focus on the last token's prediction
-            logits = logits[0, min(seq_len, self.max_seq_len) - 1, :] / temperature
+            logits = logits[0, min(seq_len, self.block_size) - 1, :] / temperature
             # optionally crop the logits to only the top k options
             if top_k is not None:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
@@ -231,7 +231,7 @@ class GPT(nn.Module):
             # sample from the distribution
             idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
-            idx[min(seq_len, self.max_seq_len)] = idx_next
+            idx[min(seq_len, self.block_size)] = idx_next
 
             # iterate sequence count and account for any time we surpass flex-attention's block size
             seq_len += 1
@@ -530,7 +530,7 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
                        num_layers=args.num_layers,
                        num_heads=args.num_heads, 
                        model_dim=args.model_dim,
-                       max_seq_len=args.block_size,
+                       block_size=args.block_size,
                        mlp_ratio=args.mlp_ratio).cuda()
 print0(f'{model.get_num_params()} parameters', console=True)
 print0(model)
