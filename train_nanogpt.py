@@ -539,7 +539,7 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
 print0(f'{model.get_num_params()} parameters', console=True)
 print0(model)
 
-optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4)
+optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device_type='cuda')
 
 # learning rate schedule: stable then decay
 def get_lr(step: int):
