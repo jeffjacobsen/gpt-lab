@@ -84,10 +84,10 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, mlp_ratio: int, max_seq_len: int):
+    def __init__(self, model_dim: int, num_heads: int, mlp_ratio: int):
         super().__init__()
         self.ln_1 = nn.LayerNorm(model_dim)
-        self.attn = CausalSelfAttention(model_dim, num_heads, max_seq_len)
+        self.attn = CausalSelfAttention(model_dim, num_heads)
         self.ln_2 = nn.LayerNorm(model_dim)
         self.mlp = MLP(model_dim, mlp_ratio)
 
@@ -119,7 +119,7 @@ class GPT(nn.Module):
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, model_dim),
             wpe = nn.Embedding(max_seq_len, model_dim),
-            h = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio, max_seq_len) for _ in range(num_layers)]),
+            h = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio) for _ in range(num_layers)]),
             ln_f = nn.LayerNorm(model_dim),
         ))
         
