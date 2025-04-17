@@ -58,10 +58,12 @@ class CausalSelfAttention(nn.Module):
         B, T, C = x.size() # batch size, sequence length
         print(B, T, C)
         qkv = self.c_attn(x)
-        print(qkv.size())
         q, k, v = qkv.split(self.block_size, dim=2)
+        print(q.size())
         print(k.size())
+        print(v.size())        
         k = k.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
+        print(k.size())
         q = q.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # flash attention
@@ -153,7 +155,6 @@ class GPT(nn.Module):
                 ):
         
         B, T = input_seq.size()
-        print(B, T)
         assert T <= self.block_size, f"Cannot forward sequence of length {T}, block size is only {self.block_size}"
         # forward the token and posisition embeddings
         pos = torch.arange(0, T, dtype=torch.long, device=input_seq.device) # shape (T)
