@@ -17,6 +17,7 @@ import shutil
 import csv
 import random # Import random for potential future use, though not strictly needed for torch seeding
 import numpy as np # Import numpy for potential future use, set random seed now not to forget to set it later
+import inspect
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
@@ -171,6 +172,30 @@ class GPT(nn.Module):
         """
         n_params = sum(p.numel() for p in self.parameters())
         return n_params
+    
+    def configure_optimizers(self, weight_decay, learning_rate, device_type):
+        # start with all of the candidate parameters (that require grad)
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0}
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        if master_process:
+            print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+            print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        # Create AdamW optimizer and use the fused version if it is available
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        if master_process:
+            print(f"using fused AdamW: {fused_available}")
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=fused_available)
+        return optimizer
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
@@ -514,31 +539,7 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
 print0(f'{model.get_num_params()} parameters', console=True)
 print0(model)
 
-# Set FP8 option based on hyperparameters
-model.lm_head.use_fp8 = args.hopper
-
-for m in model.modules():
-    if isinstance(m, nn.Embedding):
-        m.bfloat16()
-if world_size > 1:
-    for param in model.parameters():
-        dist.broadcast(param.detach(), 0)
-
-# collect the parameters to optimize
-hidden_matrix_params = [p for n, p in model.blocks.named_parameters() if p.ndim >= 2 and "embed" not in n]
-embed_params = [p for n, p in model.named_parameters() if "embed" in n]
-scalar_params = [p for p in model.parameters() if p.ndim < 2]
-head_params = [model.lm_head.weight]
-
-# init the optimizer(s)
-adam_params = [dict(params=head_params, lr=0.22), dict(params=embed_params, lr=0.6), dict(params=scalar_params, lr=0.04)]
-# small adam epsilon by @YouJiacheng. this is an alternate method of fixing the world_size dependence
-# discovered by @fernbear.bsky.social https://x.com/hi_tysam/status/1879692937589875094
-optimizer1 = torch.optim.Adam(adam_params, betas=(0.8, 0.95), eps=1e-10, fused=True)
-optimizers = [optimizer1]
-for opt in optimizers:
-    for group in opt.param_groups:
-        group["initial_lr"] = group["lr"]
+optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4)
 
 # learning rate schedule: stable then decay
 def get_lr(step: int):
@@ -570,24 +571,21 @@ if hasattr(torch.cuda, 'memory_stats'):
 # Warmup the training kernels, then re-initialize the state so we aren't cheating
 warmup_steps = 10
 initial_state = dict(model=copy.deepcopy(model.state_dict()),
-                     optimizers=[copy.deepcopy(opt.state_dict()) for opt in optimizers]) # save the initial state
+                     optimizers=copy.deepcopy(optimizer.state_dict())) # save the initial state
 for _ in range(warmup_steps):
     loss = torch.tensor([0.], device="cuda")
     for _ in range(args.grad_acc_steps):
         inputs = targets = torch.randint(0, args.vocab_size, size=(args.train_seq_len,), device="cuda", dtype=torch.int64)
-        #torch.compiler.cudagraph_mark_step_begin()
-            # TODO why does un-cpmmenting this^ line throw an error here in the warmup but not down in training?
         step_loss = model(inputs.to(torch.int32), targets)
         loss += step_loss / args.grad_acc_steps
     loss.backward()
     if world_size > 1:
         for param in model.parameters():
             dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
-    for opt in optimizers:
-        opt.step()
+    optimizer.step()
     model.zero_grad(set_to_none=True)
 model.load_state_dict(initial_state["model"])
-for opt, opt_state in zip(optimizers, initial_state["optimizers"]):
+for opt, opt_state in zip(optimizer, initial_state["optimizers"]):
     opt.load_state_dict(opt_state)
 del initial_state # TODO optionally save initial state of model jic someone wants to test different seeds
 
@@ -690,12 +688,10 @@ for step in range(args.train_steps + 1):
         for param in model.parameters():
             dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
     # set optimization hyperparameters
-    for opt in optimizers:
-        for group in opt.param_groups:
-            group["lr"] = group["initial_lr"] * get_lr(step)
+    for group in optimizer.param_groups:
+        group["lr"] = group["initial_lr"] * get_lr(step)
     # step the optimizers
-    for opt in optimizers:
-        opt.step()
+    optimizer.step()
     # null the gradients
     model.zero_grad(set_to_none=True)
         
