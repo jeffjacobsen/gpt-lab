@@ -558,10 +558,10 @@ print0("warming up kernels...", console=True)
 
 # Attempt to limit memory fragmentation
 if hasattr(torch.cuda, 'memory_stats'):
-    print0(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
+    print(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
 # Warmup the training kernels, then re-initialize the state so we aren't cheating
-warmup_steps = 10
+warmup_steps = 3
 initial_state = dict(model=copy.deepcopy(model.state_dict()),
                      optimizers=copy.deepcopy(optimizer.state_dict())) # save the initial state
 for _ in range(warmup_steps):
@@ -582,7 +582,7 @@ for opt, opt_state in zip(optimizer, initial_state["optimizers"]):
 del initial_state # TODO optionally save initial state of model jic someone wants to test different seeds
 
 if hasattr(torch.cuda, 'memory_stats'):
-    print0(f"After warmup GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
+    print(f"After warmup GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
 print0("kernels are toasty", console=True)
 
