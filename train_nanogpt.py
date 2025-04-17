@@ -565,7 +565,7 @@ if hasattr(torch.cuda, 'memory_stats'):
 # Warmup the training kernels, then re-initialize the state so we aren't cheating
 warmup_steps = 3
 initial_state = dict(model=copy.deepcopy(model.state_dict()),
-                     optimizers=copy.deepcopy(optimizer.state_dict())) # save the initial state
+                     optimizer=copy.deepcopy(optimizer.state_dict())) # save the initial state
 for _ in range(warmup_steps):
     loss = torch.tensor([0.], device="cuda")
     for _ in range(args.grad_acc_steps):
