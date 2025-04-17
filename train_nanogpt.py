@@ -43,22 +43,18 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         self.block_size = block_size
-        # calculate head_dim based on the model dimension
-        head_dim = model_dim // num_heads
-        self.head_dim = head_dim
-        hdim = num_heads * head_dim
 
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(model_dim, 3 * model_dim)
         # output projection
-        self.c_proj = nn.Linear(hdim, model_dim)
+        self.c_proj = nn.Linear(model_dim, model_dim)
         self.c_proj.NANOGPT_SCALE_INIT = 1
 
     def forward(self, x: Tensor):
         B, T, C = x.size() # batch size, sequence length
         print(B, T, C)
         qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.block_size, dim=2)
+        q, k, v = qkv.split(self.num_heads, dim=2)
         print(q.size())
         print(k.size())
         print(v.size())        
