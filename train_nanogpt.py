@@ -20,6 +20,9 @@ import numpy as np # Import numpy for potential future use, set random seed now 
 import inspect
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["TORCH_USE_CUDA_DSA"] = "True"
+os.environ["CUDA_LAUNCH_BLOCKING"] = 1
+
 import torch
 torch.empty(1, device="cuda", requires_grad=True).backward() # prevents a bug on some systems
 from torch import Tensor, nn
@@ -143,8 +146,8 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, 
-                input_seq: Tensor, # shape (B*N)
-                target_seq: Tensor = None, # (B*N)
+                input_seq: Tensor, # shape (B, T)
+                target_seq: Tensor = None,
                 ):
         
         B, T = input_seq.size()
