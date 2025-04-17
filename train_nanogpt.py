@@ -580,8 +580,7 @@ for _ in range(warmup_steps):
     optimizer.step()
     model.zero_grad(set_to_none=True)
 model.load_state_dict(initial_state["model"])
-for opt, opt_state in zip(optimizer, initial_state["optimizers"]):
-    opt.load_state_dict(opt_state)
+optimizer.load_state_dict(initial_state["optimizer"])
 del initial_state # TODO optionally save initial state of model jic someone wants to test different seeds
 
 if hasattr(torch.cuda, 'memory_stats'):
