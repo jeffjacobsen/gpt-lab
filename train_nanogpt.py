@@ -295,7 +295,7 @@ def distributed_data_generator(filename_pattern: str, batch_size: int, block_siz
         buf = tokens[pos + rank * BT:][:BT + 1]
         inputs = buf[:-1].view(B, T).to(device="cuda", dtype=torch.int32, non_blocking=True) # no sync on host side;
         targets = buf[1:].view(B, T).to(device="cuda", dtype=torch.int64, non_blocking=True) # H2D in another stream isn't helpful.
-        pos += BytesWarning
+        pos += BT
         yield inputs, targets
 
 # -----------------------------------------------------------------------------
@@ -571,7 +571,6 @@ for _ in range(warmup_steps):
     for _ in range(args.grad_acc_steps):
         inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size, args.block_size), device="cuda", dtype=torch.int64)
         step_loss = model(inputs.to(torch.int32), targets)
-        print(step_loss.size())
         loss += step_loss / args.grad_acc_steps
     loss.backward()
     if world_size > 1:
