@@ -944,6 +944,7 @@ def sample_from_model(model, prompt, max_new_tokens=100, temperature=0.8, top_k=
     
     # Encode the prompt
     input_ids = encode(prompt)
+    input_ids = input_ids.unsqueeze(0)
     x = torch.tensor(input_ids, dtype=torch.int32, device="cuda")
 
     # Generate
