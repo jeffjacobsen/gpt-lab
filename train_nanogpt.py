@@ -61,7 +61,6 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
         # output projection
         y = self.c_proj(y)
-        print('CSA')
         return y
 
 class MLP(nn.Module):
@@ -163,6 +162,7 @@ class GPT(nn.Module):
         loss = None
         if target_seq is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+        print('GPT')
         return logits, loss
 
 
