@@ -162,6 +162,7 @@ class GPT(nn.Module):
         print(tok_emb.size())
         x = tok_emb + pos_emb
         print(x.size())
+        exit()
         # forward the blocks of the transformer
         for block in self.transformer.h:
             x = block(x)
