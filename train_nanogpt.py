@@ -563,15 +563,12 @@ if hasattr(torch.cuda, 'memory_stats'):
     print0(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
 # Warmup the training kernels, then re-initialize the state so we aren't cheating
-warmup_steps = 3
+warmup_steps = 10
 initial_state = dict(model=copy.deepcopy(model.state_dict()),
                      optimizer=copy.deepcopy(optimizer.state_dict())) # save the initial state
 for _ in range(warmup_steps):
-    loss = torch.tensor([0.], device="cuda")
-    for _ in range(args.grad_acc_steps):
-        inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size, args.block_size), device="cuda", dtype=torch.int64)
-        step_loss = model(inputs.to(torch.int32), targets)
-        loss += step_loss / args.grad_acc_steps
+    inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size, args.block_size), device="cuda", dtype=torch.int64)
+    loss = model(inputs.to(torch.int32), targets)
     loss.backward()
     if world_size > 1:
         for param in model.parameters():
