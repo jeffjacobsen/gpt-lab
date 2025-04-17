@@ -20,8 +20,8 @@ import numpy as np # Import numpy for potential future use, set random seed now 
 import inspect
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["TORCH_USE_CUDA_DSA"] = "1"
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #Debug
 
 import torch
 torch.empty(1, device="cuda", requires_grad=True).backward() # prevents a bug on some systems
@@ -151,6 +151,7 @@ class GPT(nn.Module):
                 ):
         
         B, T = input_seq.size()
+        print(B, T)
         assert T <= self.max_seq_len, f"Cannot forward sequence of length {T}, block size is only {self.max_seq_len}"
         # forward the token and posisition embeddings
         pos = torch.arange(0, T, dtype=torch.long, device=input_seq.device) # shape (T)
