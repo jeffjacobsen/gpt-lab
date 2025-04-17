@@ -53,7 +53,7 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: Tensor):
         B, T, C = x.size() # batch size, sequence length
         qkv = self.c_attn(x)    
-        q, k, v = qkv.chunk(3, dim=2)
+        q, k, v = qkv.split(self.model_dim, dim=2)
         k = k.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
