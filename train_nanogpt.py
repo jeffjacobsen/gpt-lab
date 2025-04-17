@@ -118,7 +118,7 @@ class GPT(nn.Module):
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, model_dim),
-            wpe = nn.Embedding(model_dim, model_dim),
+            wpe = nn.Embedding(max_seq_len, model_dim),
             h = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio, max_seq_len) for _ in range(num_layers)]),
             ln_f = nn.LayerNorm(model_dim),
         ))
