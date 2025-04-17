@@ -19,6 +19,8 @@ import random # Import random for potential future use, though not strictly need
 import numpy as np # Import numpy for potential future use, set random seed now not to forget to set it later
 import inspect
 
+from torch.cuda.amp import autocast
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1" #Debug
@@ -158,8 +160,8 @@ class GPT(nn.Module):
             x = block(x)
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
-        print(x.size())
-        logits = self.lm_head(x) # (B, T, vocab_size)
+        with autocast():
+            logits = self.lm_head(x) # (B, T, vocab_size)
         print('Logits Done')
         loss = None
         if target_seq is not None:
