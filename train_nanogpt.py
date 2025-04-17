@@ -160,8 +160,8 @@ class GPT(nn.Module):
             x = block(x)
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
-        with autocast():
-            logits = self.lm_head(x) # (B, T, vocab_size)
+        #with autocast():
+        logits = self.lm_head(x) # (B, T, vocab_size)
         loss = None
         if target_seq is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
@@ -570,6 +570,7 @@ for _ in range(warmup_steps):
     for _ in range(args.grad_acc_steps):
         inputs = targets = torch.randint(0, args.vocab_size, size=(args.batch_size, args.block_size), device="cuda", dtype=torch.int64)
         step_loss = model(inputs.to(torch.int32), targets)
+        print(step_loss.size())
         loss += step_loss / args.grad_acc_steps
     loss.backward()
     if world_size > 1:
