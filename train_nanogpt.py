@@ -39,13 +39,12 @@ def norm(x: Tensor):
     return F.rms_norm(x, (x.size(-1),))
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, head_dim=None):
+    def __init__(self, model_dim: int, num_heads: int, max_seq_len: int):
         super().__init__()
-        # Calculate head_dim based on model dimensions and num_heads
         self.num_heads = num_heads
-        # If head_dim not specified, calculate it based on the model dimension
-        if head_dim is None:
-            head_dim = model_dim // num_heads
+        self.block_size = max_seq_len
+        # calculate head_dim based on the model dimension
+        head_dim = model_dim // num_heads
         self.head_dim = head_dim
         hdim = num_heads * head_dim
 
@@ -58,7 +57,7 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: Tensor):
         B, T, C = x.size() # batch size, sequence length
         qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.n_embd, dim=2)
+        q, k, v = qkv.split(self.max_seq_len, dim=2)
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -84,10 +83,10 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, mlp_ratio: int):
+    def __init__(self, model_dim: int, num_heads: int, max_seq_len: int, mlp_ratio: int):
         super().__init__()
         self.ln_1 = nn.LayerNorm(model_dim)
-        self.attn = CausalSelfAttention(model_dim, num_heads)
+        self.attn = CausalSelfAttention(model_dim, num_heads, max_seq_len)
         self.ln_2 = nn.LayerNorm(model_dim)
         self.mlp = MLP(model_dim, mlp_ratio)
 
@@ -119,7 +118,7 @@ class GPT(nn.Module):
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, model_dim),
             wpe = nn.Embedding(max_seq_len, model_dim),
-            h = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio) for _ in range(num_layers)]),
+            h = nn.ModuleList([Block(model_dim, num_heads, max_seq_len, mlp_ratio) for _ in range(num_layers)]),
             ln_f = nn.LayerNorm(model_dim),
         ))
         
