@@ -34,117 +34,62 @@ from torch.nn.attention.flex_attention import BlockMask, flex_attention, create_
 def norm(x: Tensor):
     return F.rms_norm(x, (x.size(-1),))
 
-class CastedLinear(nn.Linear):
-    def __init__(self, in_features: int, out_features: int, use_fp8=False, x_s=1.0, w_s=1.0, grad_s=1.0):
-        super().__init__(in_features, out_features, bias=False)
-        self.use_fp8 = use_fp8
-        self.x_s = x_s
-        self.w_s = w_s
-        self.grad_s = grad_s
-
-    def reset_parameters(self) -> None:
-        std = 0.5 * (self.in_features ** -0.5) # 0.5 is a bit better than the default 1/sqrt(3)
-        bound = (3 ** 0.5) * std
-        with torch.no_grad():
-            self.weight.uniform_(-bound, bound)
-
-    def forward(self, x: Tensor):
-        if self.use_fp8 and self.training:
-            _x = x.flatten(0, -2)
-            out: Tensor = torch.ops.nanogpt.mm(_x, self.weight, x_s=self.x_s, w_s=self.w_s, grad_s=self.grad_s)[0]
-            return out.reshape(*x.shape[:-1], -1)
-        else:
-            return F.linear(x, self.weight.type_as(x))
-
-class Rotary(nn.Module):
-    def __init__(self, dim: int, max_seq_len: int):
-        super().__init__()
-        # half-truncate RoPE by @YouJiacheng (w/ base freq tuning)
-        # Ensure we don't exceed the dimension size
-        dim_quarter = max(1, dim // 4)
-        angular_freq = (1 / 1024) ** torch.linspace(0, 1, steps=dim_quarter, dtype=torch.float32)
-        angular_freq = torch.cat([angular_freq, angular_freq.new_zeros(dim_quarter)])
-        t = torch.arange(max_seq_len, dtype=torch.float32)
-        theta = torch.einsum("i,j -> ij", t, angular_freq) # outer product
-        self.cos = nn.Buffer(theta.cos(), persistent=False)
-        self.sin = nn.Buffer(theta.sin(), persistent=False)
-
-    def forward(self, x_BTHD: Tensor):
-        assert self.cos.size(0) >= x_BTHD.size(-3)
-        cos, sin = self.cos[None, :x_BTHD.size(-3), None, :], self.sin[None, :x_BTHD.size(-3), None, :]
-        # Handle case where the number of dimensions is smaller
-        dim_half = x_BTHD.size(-1) // 2
-        x1, x2 = x_BTHD.to(dtype=torch.float32).chunk(2, dim=-1)
-        y1 = x1 * cos[..., :dim_half] + x2 * sin[..., :dim_half]
-        y2 = x1 * (-sin[..., :dim_half]) + x2 * cos[..., :dim_half]
-        return torch.cat((y1, y2), 3).type_as(x_BTHD)
-
 class CausalSelfAttention(nn.Module):
-    def __init__(self, dim: int, num_heads: int, max_seq_len: int, head_dim=None):
+    def __init__(self, model_dim: int, num_heads: int, max_seq_len: int, head_dim=None):
         super().__init__()
         # Calculate head_dim based on model dimensions and num_heads
         self.num_heads = num_heads
         # If head_dim not specified, calculate it based on the model dimension
         if head_dim is None:
-            head_dim = dim // num_heads
+            head_dim = model_dim // num_heads
         self.head_dim = head_dim
         hdim = num_heads * head_dim
-        std = 0.5 * (dim ** -0.5)
-        bound = (3 ** 0.5) * std # improved init scale by @YouJiacheng
-        # merged QKV weights: suggested by many, implemented by @fernbear.bsky.social, and further improved by @YouJiacheng
-        # https://x.com/hi_tysam/status/1879699187107033311
-        self.qkv_w = nn.Parameter(torch.empty(3, hdim, dim).uniform_(-bound, bound))
-        self.lambdas = nn.Parameter(torch.tensor([0.5, 0.5]))
-        self.rotary = Rotary(head_dim, max_seq_len)
-        self.c_proj = CastedLinear(hdim, dim)
-        self.c_proj.weight.detach().zero_() # zero init suggested by @Grad62304977
 
-    def forward(self, x: Tensor, ve: Tensor | None, block_mask: BlockMask):
-        B, T = x.size(0), x.size(1) # batch size, sequence length
-        assert B == 1, "Must use batch size = 1 for FlexAttention"
-        q, k, v = F.linear(x, self.qkv_w.flatten(end_dim=1).type_as(x)).view(B, T, 3 * self.num_heads, self.head_dim).chunk(3, dim=-2)
-        q, k = norm(q), norm(k) # QK norm @Grad62304977
-        q, k = self.rotary(q), self.rotary(k)
-        if ve is not None:
-            v = self.lambdas[0] * v + self.lambdas[1] * ve.view_as(v) # @KoszarskyB & @Grad62304977
-        else: # skip mid-layers token value embeddings by @YouJiacheng
-            v = self.lambdas[0] * v
-        # scale the attention logits by given constant, instead of the default head_dim**-0.5, by @leloykun
-        # inspired by learnable scalars used by @brendanh0gan https://x.com/hi_tysam/status/1879693583898591283
-        y = flex_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), block_mask=block_mask, scale=0.12).transpose(1, 2)
-        y = y.contiguous().view(B, T, self.num_heads * self.head_dim) # re-assemble all head outputs side by side
+        # key, query, value projections for all heads, but in a batch
+        self.c_attn = nn.Linear(model_dim, 3 * model_dim)
+        # output projection
+        self.c_proj = nn.Linear(hdim, model_dim)
+        self.c_proj.NANOGPT_SCALE_INIT = 1
+
+    def forward(self, x: Tensor):
+        B, T, C = x.size() # batch size, sequence length
+        qkv = self.c_attn(x)
+        q, k, v = qkv.split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # flash attention
+        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+        # output projection
         y = self.c_proj(y)
         return y
 
 class MLP(nn.Module):
-    def __init__(self, dim: int, mlp_ratio: int = 4):
+    def __init__(self, model_dim: int, mlp_ratio: int = 4):
         super().__init__()
-        hdim = int(mlp_ratio * dim)
-        self.c_fc = CastedLinear(dim, hdim)
-        self.c_proj = CastedLinear(hdim, dim)
-        self.c_proj.weight.detach().zero_() # zero init suggested by @Grad62304977
+        hdim = int(mlp_ratio * model_dim)
+        self.c_fc = nn.Linear(model_dim, hdim)
+        self.gelu    = nn.GELU(approximate='tanh')
+        self.c_proj = nn.Linear(hdim, model_dim)
+        self.c_proj.NANOGPT_SCALE_INIT = 1
 
     def forward(self, x: Tensor):
         x = self.c_fc(x)
-        x = F.relu(x).square() # https://arxiv.org/abs/2109.08668v2; ~1-2% better than GELU; suggested by @SKYLINEZ007 and @Grad62304977
+        x = self.gelu(x)
         x = self.c_proj(x)
         return x
 
 class Block(nn.Module):
-    def __init__(self, dim: int, num_heads: int, mlp_ratio: int, max_seq_len: int, layer_idx: int):
+    def __init__(self, model_dim: int, num_heads: int, mlp_ratio: int, max_seq_len: int):
         super().__init__()
-        # skip attention of blocks.7 (the 8th layer) by @YouJiacheng
-        # Adjusted for smaller models - only skip if we have enough layers
-        skip_attn = (layer_idx == 7) and (dim > 512)  # Only skip in larger models
-        self.attn = CausalSelfAttention(dim, num_heads, max_seq_len) if not skip_attn else None
-        self.mlp = MLP(dim, mlp_ratio)
-        self.lambdas = nn.Parameter(torch.tensor([1., 0.]))
+        self.ln_1 = nn.LayerNorm(model_dim)
+        self.attn = CausalSelfAttention(model_dim, num_heads, max_seq_len)
+        self.ln_2 = nn.LayerNorm(model_dim)
+        self.mlp = MLP(model_dim, mlp_ratio)
 
-    def forward(self, x: Tensor, ve: Tensor | None, x0: Tensor, block_mask: BlockMask):
-        x = self.lambdas[0] * x + self.lambdas[1] * x0
-        if self.attn is not None:
-            x = x + self.attn(norm(x), ve, block_mask)
-        x = x + self.mlp(norm(x))
+    def forward(self, x: Tensor):
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
         return x
 
 # -----------------------------------------------------------------------------
@@ -153,68 +98,69 @@ class Block(nn.Module):
 def next_multiple_of_n(v: float | int, *, n: int):
     return next(x for x in range(n, int(v) + 1 + n, n) if x >= v)
 
+#class GPTConfig:
+#    block_size: int = 1024 # max sequence length
+#    vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
+#    n_layer: int = 12 # number of layers
+#    n_head: int = 12 # number of heads
+#    n_embd: int = 768 # embedding dimension
+
 class GPT(nn.Module):
     def __init__(self, vocab_size: int, num_layers: int, num_heads: int, model_dim: int, max_seq_len: int, mlp_ratio: int):
         super().__init__()
         self.model_dim = model_dim
         self.max_seq_len = max_seq_len
-        self.embed = nn.Embedding(vocab_size, model_dim)
-        # token value embeddings by @KoszarskyB - inspired by @Grad62304977's value residual implementation following https://arxiv.org/abs/2410.17897
-        # value embedding code simplification inspired by @ragulpr https://github.com/KellerJordan/modded-nanogpt/pull/78
-        self.value_embeds = nn.ModuleList([nn.Embedding(vocab_size, model_dim) for _ in range(3)])
-        self.blocks = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio, max_seq_len, i) for i in range(num_layers)])
+        self.transformer = nn.ModuleDict(dict(
+            wte = nn.Embedding(vocab_size, model_dim),
+            wpe = nn.Embedding(max_seq_len, model_dim),
+            h = nn.ModuleList([Block(model_dim, num_heads, mlp_ratio, max_seq_len) for _ in range(num_layers)]),
+            ln_f = nn.LayerNorm(model_dim),
+        ))
+        
         # there are only 50257 unique GPT-2 tokens; we extend to nearest multiple of 128 for efficiency.
-        # suggested to me by @Grad62304977. this originates from Karpathy's experiments.
-        self.lm_head = CastedLinear(model_dim, next_multiple_of_n(vocab_size, n=128),
-                                    use_fp8=True, x_s=(model_dim**0.5)/448, w_s=24/448, grad_s=1/448)
-        self.lm_head.weight.detach().zero_() # @Grad62304977
-        # Add learnable skip connection weights for decoder layers
-        assert num_layers % 2 == 0, f"Number of layers ({num_layers}) must be even for skip connections"
-        self.skip_weights = nn.Parameter(torch.ones(num_layers//2))
+        # this originates from Karpathy's experiments.
+        self.lm_head = nn.Linear(model_dim,  next_multiple_of_n(vocab_size, n=128), bias=False)
+
+        # weight sharing scheme
+        self.transformer.wte.weight = self.lm_head.weight
+
+        # init weights
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            std = 0.02
+            if hasattr(module, 'NANOGPT_SCALE_INIT'):
+                std *= (2 * self.config.n_layer) ** -0.5
+            torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, 
                 input_seq: Tensor, # shape (B*N)
                 target_seq: Tensor = None, # (B*N)
                 ):
-        # sliding_window_num_blocks is tensor of shape (w) dtype int32 were w is number of blocks flexattention will use
-        assert input_seq.ndim == 1
+        
+        B, T = input_seq.size()
+        assert T <= self.max_seq_len, f"Cannot forward sequence of length {T}, block size is only {self.max_seq_len}"
+        # forward the token and posisition embeddings
+        pos = torch.arange(0, T, dtype=torch.long, device=input_seq.device) # shape (T)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, model_dim)
+        tok_emb = self.transformer.wte(input_seq) # token embeddings of shape (B, T, model_dim)
+        x = tok_emb + pos_emb
+        # forward the blocks of the transformer
+        for block in self.transformer.h:
+            x = block(x)
+        # forward the final layernorm and the classifier
+        x = self.transformer.ln_f(x)
+        logits = self.lm_head(x) # (B, T, vocab_size)
+        loss = None
+        if target_seq is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+        return logits, loss
 
-        ve = [value_embed(input_seq) for value_embed in self.value_embeds] # each (B*N, D)
-        # Adjust token value embeddings structure for fewer layers
-        ve = [ve[0], ve[1], ve[2]] + [None] * (len(self.blocks) - 6) + [ve[0], ve[1], ve[2]]
-        assert len(ve) == len(self.blocks)
-
-        # creating flex-attentio mask
-        docs = (input_seq == 50256).cumsum(0)
-        def doc_causal(b, h, q_idx, kv_idx):
-            causal_mask = q_idx >= kv_idx
-            document_mask = docs[q_idx] == docs[kv_idx]
-            return causal_mask & document_mask
-        # Because the sparsity pattern is independent of batch and heads, we'll set them to None (which broadcasts them) 
-        block_mask = create_block_mask(doc_causal, B=None, H=None, Q_LEN=len(input_seq), KV_LEN=len(input_seq))
-
-        x = x0 = norm(self.embed(input_seq)[None]) # use of norm here by @Grad62304977
-
-        # U-net design by @brendanh0gan
-        skip_connections = []
-        n = len(self.skip_weights)
-        for i in range(len(self.blocks)):
-            if i >= n:
-                x = x + self.skip_weights[i - n] * skip_connections.pop()
-            x = self.blocks[i](x, ve[i], x0, block_mask)
-            if i < n:
-                skip_connections.append(x)
-
-        x = norm(x)
-        logits = self.lm_head(x).float()
-        # @Grad62304977 added tanh softcapping following Gemma 2 paper, @KoszarskyB reduced it from 30 to 15, @YouJiacheng shifted it by +15 (2*sigmoid(2*x)=tanh(x)+1)
-        logits = 30 * torch.sigmoid(logits / (7.5 * x.size(-1)**0.5))
-
-        if target_seq is None:
-            return logits
-        else:
-            return F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq, 
-                                  reduction='sum' if self.training else 'mean')
 
     def get_num_params(self):
         """
@@ -327,24 +273,24 @@ class Hyperparameters:
     """
     default values are set to fit on a GPU w/ 8GB of VRAM, but are not necessarily optimal
     """
-    model_name = "ModdedGPT"
+    model_name = "NanoGPT"
     # data
     train_files = "data/fineweb*_train_*.bin" # input .bin to train on
     val_files = "data/fineweb*_val_*.bin" # input .bin to eval validation loss on
     val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
-    train_seq_len = 8*1024 # FlexAttention sequence length
-    val_seq_len = 12*1024 # FlexAttention sequence length for validation
+    train_seq_len = 8*1024 # Train sequence length
+    val_seq_len = 12*1024 # Sequence length for validation
     # optimization
     train_steps = 20#_000 # number of training steps to run
     grad_acc_steps = 1 # number of gradient accumulation steps per training step
     cooldown_frac = 0.4 # fraction of training spent cooling down the learning rate
     # architecture
-    tokenizer = "gpt4regex_v50256_n30000000.pkl"#134217728.pkl" # any .pkl file in tokenizers/
+    tokenizer = "gpt4regex_v50256_n1000000000.pkl"#134217728.pkl" # any .pkl file in tokenizers/
     vocab_size = 50257 # should be the tokenizer's size plus any special tokens defined in this script
     # model size - new parameters for GPUs w/ at least 8GB VRAM during testing
     num_layers = 12  # 124m param model should be 12
     num_heads = 6   # 124m param model should be 6
-    model_dim = 768  # must be divisible by num_heads
+    model_dim = 1024  # must be divisible by num_heads
     head_dim = None  # if None, will be set to model_dim // num_heads
     mlp_ratio = 4  # 124m param model should be 4
     # memory optimization 
