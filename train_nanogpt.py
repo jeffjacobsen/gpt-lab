@@ -689,8 +689,8 @@ for step in range(args.train_steps + 1):
         for param in model.parameters():
             dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
     # set optimization hyperparameters
-    #for param_group in optimizer.param_groups:
-    #    param_group["lr"] = get_lr(step)
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = get_lr(step)
     # step the optimizers
     optimizer.step()
     # null the gradients
