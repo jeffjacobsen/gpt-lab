@@ -39,7 +39,7 @@ def norm(x: Tensor):
     return F.rms_norm(x, (x.size(-1),))
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, max_seq_len: int, head_dim=None):
+    def __init__(self, model_dim: int, num_heads: int, head_dim=None):
         super().__init__()
         # Calculate head_dim based on model dimensions and num_heads
         self.num_heads = num_heads
