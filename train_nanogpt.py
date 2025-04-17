@@ -334,8 +334,6 @@ class Hyperparameters:
             self.head_dim = self.model_dim // self.num_heads
         assert self.head_dim in [2 ** i for i in range(1, 10)], f"head_dim must be a power of 2, got {self.head_dim}"
         assert self.mlp_ratio > 0, f"mlp_ratio must be positive, got {self.mlp_ratio}"
-        assert self.num_layers >= 2, f"num_layers must be greater than or equal to 2 because of attention mask structure, got {self.num_layers}"
-        assert self.num_layers >= 6, f"num_layers must be greater than or equal to 2 because of value embeddings structure, got {self.num_layers}"
         assert self.grad_acc_steps >= 1, f"grad_acc steps must be int >= 1"
 
     @classmethod
