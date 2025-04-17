@@ -156,7 +156,9 @@ class GPT(nn.Module):
         # forward the token and posisition embeddings
         pos = torch.arange(0, T, dtype=torch.long, device=input_seq.device) # shape (T)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, model_dim)
+        print(pos_emb.size())
         tok_emb = self.transformer.wte(input_seq) # token embeddings of shape (B, T, model_dim)
+        print(tok_emb.size())
         x = tok_emb + pos_emb
         print(x.size())
         # forward the blocks of the transformer
