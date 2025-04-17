@@ -158,9 +158,12 @@ class GPT(nn.Module):
             x = block(x)
             print('Block')
         # forward the final layernorm and the classifier
-        print('DONE')
+
+        print('Block Done')
         x = self.transformer.ln_f(x)
+        print('Linear Done')
         logits = self.lm_head(x) # (B, T, vocab_size)
+        print('Logits Done')
         loss = None
         if target_seq is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
