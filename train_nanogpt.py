@@ -798,7 +798,7 @@ def evaluate_hellaswag(model, data_path, limit=1014):
                 # Add padding
                 valid_seq = torch.cat((valid_seq, 
                                       torch.zeros(pad_ct, dtype=valid_seq.dtype, device=valid_seq.device)), 
-                                      dim=0)
+                                      dim=0).unsqueeze(0);
             
             # Get logits from our model
             logits = model(valid_seq)
