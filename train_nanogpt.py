@@ -156,13 +156,14 @@ class GPT(nn.Module):
         # forward the blocks of the transformer
         for block in self.transformer.h:
             x = block(x)
+            print(x)
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x) # (B, T, vocab_size)
         loss = None
         if target_seq is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-        print('GPT')
+
         return logits, loss
 
 
