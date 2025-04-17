@@ -158,6 +158,7 @@ class GPT(nn.Module):
             x = block(x)
             print('Block')
         # forward the final layernorm and the classifier
+        print('DONE')
         x = self.transformer.ln_f(x)
         logits = self.lm_head(x) # (B, T, vocab_size)
         loss = None
