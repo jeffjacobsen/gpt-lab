@@ -161,11 +161,12 @@ class GPT(nn.Module):
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
         with autocast():
-            logits = self.lm_head(x) # (B, T, vocab_size)
+            logits = self.lm_head(x[:, :-1, :]) # (B, T, vocab_size)
+            target_seq = target_seq[:, -1]
         print('Logits Done')
         loss = None
         if target_seq is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
 
         return logits, loss
 
@@ -311,7 +312,7 @@ class Hyperparameters:
     train_files = "data/fineweb*_train_*.bin" # input .bin to train on
     val_files = "data/fineweb*_val_*.bin" # input .bin to eval validation loss on
     block_size = 1024 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
-    batch_size = 64 # 
+    batch_size = 16 # 
     # optimization
     train_steps = 20#_000 # number of training steps to run
     grad_acc_steps = 1 # number of gradient accumulation steps per training step
