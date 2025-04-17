@@ -41,7 +41,7 @@ def norm(x: Tensor):
     return F.rms_norm(x, (x.size(-1),))
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, block_size: int):
+    def __init__(self, model_dim: int, num_heads: int):
         super().__init__()
         self.num_heads = num_heads
         self.model_dim = model_dim
@@ -53,7 +53,9 @@ class CausalSelfAttention(nn.Module):
         self.c_proj.NANOGPT_SCALE_INIT = 1
 
     def forward(self, x: Tensor):
-        B, T, C = x.size() # batch size, sequence length
+        B, T, C = x.size() # batch size, block size (sequence length), model_dim
+        # nh is "number of heads", hs is "head size", and C (number of channels) = nh * hs
+        # e.g. in GPT-2 (124M), n_head=12, hs=64, so nh * hs = C =768 channels
         qkv = self.c_attn(x)    
         q, k, v = qkv.split(self.model_dim, dim=2)
         k = k.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2) # (B, nh, T, hs)
@@ -84,7 +86,7 @@ class Block(nn.Module):
     def __init__(self, model_dim: int, num_heads: int, block_size: int, mlp_ratio: int):
         super().__init__()
         self.ln_1 = nn.LayerNorm(model_dim)
-        self.attn = CausalSelfAttention(model_dim, num_heads, block_size)
+        self.attn = CausalSelfAttention(model_dim, num_heads)
         self.ln_2 = nn.LayerNorm(model_dim)
         self.mlp = MLP(model_dim, mlp_ratio)
 
@@ -96,15 +98,11 @@ class Block(nn.Module):
 # -----------------------------------------------------------------------------
 # The main model
 
-def next_multiple_of_n(v: float | int, *, n: int):
-    return next(x for x in range(n, int(v) + 1 + n, n) if x >= v)
-
-#class GPTConfig:
 #    block_size: int = 1024 # max sequence length
 #    vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
-#    n_layer: int = 12 # number of layers
-#    n_head: int = 12 # number of heads
-#    n_embd: int = 768 # embedding dimension
+#    num_layers: int = 12 # number of layers
+#    num_heads: int = 12 # number of heads
+#    model_dim: int = 768 # embedding dimension
 
 class GPT(nn.Module):
     def __init__(self, vocab_size: int, num_layers: int, num_heads: int, model_dim: int, block_size: int, mlp_ratio: int):
@@ -114,14 +112,14 @@ class GPT(nn.Module):
         self.num_layers = num_layers
 
         self.transformer = nn.ModuleDict(dict(
+            # word token embeddings
             wte = nn.Embedding(vocab_size, model_dim),
+            # word positional embeddings
             wpe = nn.Embedding(block_size, model_dim),
             h = nn.ModuleList([Block(model_dim, num_heads, block_size, mlp_ratio) for _ in range(num_layers)]),
             ln_f = nn.LayerNorm(model_dim),
         ))
         
-        # there are only 50257 unique GPT-2 tokens; we extend to nearest multiple of 128 for efficiency.
-        # this originates from Karpathy's experiments.
         self.lm_head = nn.Linear(model_dim, vocab_size, bias=False)
 
         # weight sharing scheme
@@ -160,13 +158,15 @@ class GPT(nn.Module):
             x = block(x)
         # forward the final layernorm and the classifier
         x = self.transformer.ln_f(x)
-        #with autocast():
+
         logits = self.lm_head(x) # (B, T, vocab_size)
 
         if target_seq is None:
             return logits
         else:
-            return F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq.view(-1))
+            print(loss)
+            return loss
 
 
 
