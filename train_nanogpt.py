@@ -327,7 +327,7 @@ class Hyperparameters:
     head_dim = None  # if None, will be set to model_dim // num_heads
     mlp_ratio = 4  # 124m param model should be 4
     # evaluation and logging
-    val_loss_every = 100 # every how many steps to evaluate val loss? 0 for only at the end
+    val_loss_every = 1 # every how many steps to evaluate val loss? 0 for only at the end
     save_model = False
     # reproducibility
     seed: int | None = None # Optional random seed for initialization control
