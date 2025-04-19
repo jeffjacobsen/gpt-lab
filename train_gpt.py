@@ -512,42 +512,42 @@ args = Hyperparameters(
     seed = None) # Optional random seed for initialization control
 
 
-    # Create Hyperparameters from command-line arguments.
-    parser = argparse.ArgumentParser(description="Train a GPT model with customizable hyperparameters")
-        
-    # Data arguments
-    parser.add_argument('--train_files', type=str, help='Pattern for training data files')
-    parser.add_argument('--val_files', type=str, help='Pattern for validation data files')
-    parser.add_argument('--train_seq_len', type=int, help='Training sequence length')
-    parser.add_argument('--val_seq_len', type=int, help='Validation sequence length')
+# Create Hyperparameters from command-line arguments.
+parser = argparse.ArgumentParser(description="Train a GPT model with customizable hyperparameters")
     
-    # Optimization arguments
-    parser.add_argument('--val_steps', type=int, help='Number of steps to run validation for')
-    parser.add_argument('--train_steps', type=int, help='Number of training iterations')
-    parser.add_argument('--grad_acc_steps', type=int, help='Number of gradient accumulation steps per training iteration')
-    parser.add_argument('--cooldown_frac', type=float, help='Fraction of training for learning rate cooldown')
+# Data arguments
+parser.add_argument('--train_files', type=str, help='Pattern for training data files')
+parser.add_argument('--val_files', type=str, help='Pattern for validation data files')
+parser.add_argument('--train_seq_len', type=int, help='Training sequence length')
+parser.add_argument('--val_seq_len', type=int, help='Validation sequence length')
+
+# Optimization arguments
+parser.add_argument('--val_steps', type=int, help='Number of steps to run validation for')
+parser.add_argument('--train_steps', type=int, help='Number of training iterations')
+parser.add_argument('--grad_acc_steps', type=int, help='Number of gradient accumulation steps per training iteration')
+parser.add_argument('--cooldown_frac', type=float, help='Fraction of training for learning rate cooldown')
+
+# Architecture arguments
+parser.add_argument('--tokenizer', type=str, help='Tokenizer file name in tokenizers/ directory')
+parser.add_argument('--vocab_size', type=int, help='Vocabulary size')
+parser.add_argument('--num_layers', type=int, help='Number of transformer layers')
+parser.add_argument('--num_heads', type=int, help='Number of attention heads')
+parser.add_argument('--model_dim', type=int, help='Model embedding dimension')
+parser.add_argument('--head_dim', type=int, help='Dimension per attention head')
+parser.add_argument('--mlp_ratio', type=int, help='MLP hidden dim ratio')
+parser.add_argument('--num_val_emb', type=int, help='Number of value embeddings used at initial and final layers')
+
+# Other options
+parser.add_argument('--use_fp8', type=lambda x: (str(x).lower() == 'true'), default=None, 
+                    help='experimental; True on H100s (and newer?) should improve performance but seems to use more vram somehow')
+parser.add_argument('--val_loss_every', type=int, help='Evaluate validation loss every N steps')
+parser.add_argument('--save_model', type=lambda x: (str(x).lower() == 'true'), default=None, help='Save model checkpoints')
+parser.add_argument('--model_name', type=str, help='Model name for logging')
+parser.add_argument('--seed', type=int, help='Random seed for initialization control')
     
-    # Architecture arguments
-    parser.add_argument('--tokenizer', type=str, help='Tokenizer file name in tokenizers/ directory')
-    parser.add_argument('--vocab_size', type=int, help='Vocabulary size')
-    parser.add_argument('--num_layers', type=int, help='Number of transformer layers')
-    parser.add_argument('--num_heads', type=int, help='Number of attention heads')
-    parser.add_argument('--model_dim', type=int, help='Model embedding dimension')
-    parser.add_argument('--head_dim', type=int, help='Dimension per attention head')
-    parser.add_argument('--mlp_ratio', type=int, help='MLP hidden dim ratio')
-    parser.add_argument('--num_val_emb', type=int, help='Number of value embeddings used at initial and final layers')
-    
-    # Other options
-    parser.add_argument('--use_fp8', type=lambda x: (str(x).lower() == 'true'), default=None, 
-                        help='experimental; True on H100s (and newer?) should improve performance but seems to use more vram somehow')
-    parser.add_argument('--val_loss_every', type=int, help='Evaluate validation loss every N steps')
-    parser.add_argument('--save_model', type=lambda x: (str(x).lower() == 'true'), default=None, help='Save model checkpoints')
-    parser.add_argument('--model_name', type=str, help='Model name for logging')
-    parser.add_argument('--seed', type=int, help='Random seed for initialization control')
-        
-    cli_args = parser.parse_args()
-    print cli_args
-    exit()
+cli_args = parser.parse_args()
+print(cli_args)
+exit()
 
 '''       def __post_init__(self):
         # Validate and set derived parameters
