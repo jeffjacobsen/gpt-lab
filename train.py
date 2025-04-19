@@ -74,10 +74,7 @@ def _load_data_shard(file: Path):
         assert nbytes == 2 * num_tokens, "number of tokens read does not match header"
     return tokens
 
-class Trainer():
-
-    def __init__(self, args: Hyperparameters):
-        self.args = args
+class Trainer(Hyperparameters):
 
     def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
         files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
@@ -97,7 +94,7 @@ class Trainer():
             tokens_per_file.append(file_tokens)
         
         # Calculate how many tokens we need for training
-        tokens_needed = self.args.train_steps * batch_size self.args.grad_acc_steps
+        tokens_needed = self.args.train_steps * batch_size / self.args.grad_acc_steps
         
         # Determine if we need to cycle and calculate epochs
         will_cycle = total_tokens < tokens_needed
