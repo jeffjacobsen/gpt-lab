@@ -577,7 +577,6 @@ exit()
 
 
 # Parse arguments and create Hyperparameters instance
-args, cli_args = Hyperparameters.from_args()
-trainer = Trainer(args, cli_args)
+trainer = Trainer(args)
 Trainer.train(GPT)
 
