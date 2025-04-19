@@ -119,7 +119,7 @@ class Trainer:
             pos += batch_size
             yield inputs, targets
 
-    def train(self, GPT):
+    def train(self, model):
         import torch
         # Check if environment variables are set by torchrun, otherwise default to single GPU
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
@@ -252,13 +252,7 @@ class Trainer:
         #    Construct model and optimizer     #
         ########################################
 
-        model: nn.Module = GPT(vocab_size=args.vocab_size, 
-                            num_layers=args.num_layers,
-                            num_val_emb=args.num_val_emb,
-                            num_heads=args.num_heads, 
-                            model_dim=args.model_dim,
-                            max_seq_len=max(args.train_seq_len, args.val_seq_len),
-                            mlp_ratio=args.mlp_ratio).cuda()
+  
         print0(f'{model.get_num_params()} parameters', console=True)
         print0(model)
 

@@ -551,8 +551,16 @@ cli_args = parser.parse_args()
 for key, value in vars(cli_args).items():
     if value is not None:  # Only update if argument was provided
         setattr(args, key, value)
-  
+
+model: nn.Module = GPT(vocab_size=args.vocab_size, 
+                    num_layers=args.num_layers,
+                    num_val_emb=args.num_val_emb,
+                    num_heads=args.num_heads, 
+                    model_dim=args.model_dim,
+                    max_seq_len=max(args.train_seq_len, args.val_seq_len),
+                    mlp_ratio=args.mlp_ratio).cuda()
+
 # Train
 trainer = Trainer(args)
-Trainer.train(GPT)
+Trainer.train(model)
 
