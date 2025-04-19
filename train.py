@@ -149,6 +149,7 @@ class Trainer:
             dist.barrier()
         master_process = (rank == 0)  # this process will do logging, checkpointing etc.
 
+        args = self.args
         #################################################
         #########           logging           ###########
         #################################################
