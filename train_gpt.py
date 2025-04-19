@@ -561,6 +561,6 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
                     mlp_ratio=args.mlp_ratio).cuda()
 
 # Train
-trainer = Trainer(args)
+trainer = Trainer(args, cli_args)
 trainer.train(model)
 
