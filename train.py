@@ -121,7 +121,7 @@ class Trainer:
             pos += batch_size
             yield inputs, targets
 
-    def train(self, model, optimizers):
+    def train(self, model, optimizers, optimizers_set_lr):
         import torch
         # Check if environment variables are set by torchrun, otherwise default to single GPU
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
@@ -268,17 +268,6 @@ class Trainer:
             for param in model.parameters():
                 dist.broadcast(param.detach(), 0)
 
-
-        # learning rate schedule: stable then decay
-        def get_lr(step: int):
-            x = step / args.train_steps # progress in training
-            assert 0 <= x < 1
-            if x < 1 - args.cooldown_frac:
-                return 1.0
-            else:
-                w = (1 - x) / args.cooldown_frac
-                return w * 1.0 + (1 - w) * 0.1
-
         # Use a more memory-efficient compilation option
         if args.use_fp8:
             model: nn.Module = torch.compile(model, dynamic=False)
@@ -420,13 +409,8 @@ class Trainer:
             if world_size > 1:
                 for param in model.parameters():
                     dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
-            # set optimization hyperparameters
-            for opt in optimizers:
-                for group in opt.param_groups:
-                    group["lr"] = group["initial_lr"] * get_lr(step)
-            for group in optimizer2.param_groups:
-                frac = min(step / 300, 1) # momentum warmup for muon
-                group["momentum"] = (1 - frac) * 0.85 + frac * 0.95
+
+            optimizers_set_lr()
             # step the optimizers
             for opt in optimizers:
                 opt.step()

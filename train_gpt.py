@@ -560,6 +560,27 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
                     max_seq_len=max(args.train_seq_len, args.val_seq_len),
                     mlp_ratio=args.mlp_ratio).cuda()
 
+#*** OPTIMIZERS ***
+
+# learning rate schedule: stable then decay
+def get_lr(step: int):
+    x = step / args.train_steps # progress in training
+    assert 0 <= x < 1
+    if x < 1 - args.cooldown_frac:
+        return 1.0
+    else:
+        w = (1 - x) / args.cooldown_frac
+        return w * 1.0 + (1 - w) * 0.1
+
+def optimizers_set_lr(step):
+    # set optimization hyperparameters
+    for opt in optimizers:
+        for group in opt.param_groups:
+            group["lr"] = group["initial_lr"] * get_lr(step)
+    for group in optimizer2.param_groups:
+        frac = min(step / 300, 1) # momentum warmup for muon
+        group["momentum"] = (1 - frac) * 0.85 + frac * 0.9
+
 # collect the parameters to optimize
 hidden_matrix_params = [p for n, p in model.blocks.named_parameters() if p.ndim >= 2 and "embed" not in n]
 embed_params = [p for n, p in model.named_parameters() if "embed" in n]
@@ -594,7 +615,9 @@ for opt in optimizers:
         group["initial_lr"] = group["lr"]
 
 
+
+
 # Train
 trainer = Trainer(args, cli_args)
-trainer.train(model, optimizers)
+trainer.train(model, optimizers, optimizers_set_lr)
 
