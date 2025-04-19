@@ -76,7 +76,7 @@ def _load_data_shard(file: Path):
 
 class Trainer():
 
-    def __init__(args: Hyperparameters)
+    def __init__(args: Hyperparameters);
         
 
     def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
