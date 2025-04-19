@@ -19,7 +19,7 @@ import random
 import math
 import numpy as np # Import numpy for potential future use, set random seed now not to forget to set it later
 
-from .train import train
+#from .train import train
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
