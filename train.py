@@ -7,7 +7,7 @@ import sys
 import tiktoken
 import time
 import datetime
-import pickletools
+import pickle
 import random
 import math
 import numpy as np 
