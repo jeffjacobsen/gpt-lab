@@ -76,8 +76,9 @@ def _load_data_shard(file: Path):
     return tokens
 
 class Trainer:
-    def __init__(self, args: Hyperparameters):
+    def __init__(self, args: Hyperparameters, cli_args):
         self.args = args
+        self.cli_args = cli_args
 
     def distributed_data_generator(self, filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
         files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
@@ -179,7 +180,7 @@ class Trainer:
                 writer = csv.writer(csvfile)
                 writer.writerow(["step", "type", "loss", "cumulative_time_ms", "step_avg_ms"])
             # 6. Log any command-line arguments that were provided (overriding defaults)
-            cli_arg_dict = {k: v for k, v in vars(cli_args).items() if v is not None}
+            cli_arg_dict = {k: v for k, v in vars(self.cli_args).items() if v is not None}
             if cli_arg_dict:
                 print0("Command-line arguments overriding defaults:", console=True)
                 for key, value in cli_arg_dict.items():
