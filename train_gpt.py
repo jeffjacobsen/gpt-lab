@@ -562,5 +562,5 @@ model: nn.Module = GPT(vocab_size=args.vocab_size,
 
 # Train
 trainer = Trainer(args)
-trainer.train(model=model)
+trainer.train(model)
 
