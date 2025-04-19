@@ -1,10 +1,11 @@
 import os
 import torch
 import torch.distributed as dist
-
+import torch.nn.functional as F
 import shutil
 import sys
 import tiktoken
+import json
 import time
 import datetime
 import pickle
@@ -74,7 +75,7 @@ class Trainer:
         self.master_process = False
         self.logfile = None
 
-    def print0(self, s, console=True):
+    def print0(self, s, console=False):
     # Ensure self.print0 works even if not master_process (but does nothing)
         if self.master_process and self.logfile:
             with open(self.logfile, "a") as f:
