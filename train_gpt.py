@@ -19,7 +19,7 @@ import random
 import math
 import numpy as np # Import numpy for potential future use, set random seed now not to forget to set it later
 
-#from .train import train
+#pythfrom .train import train
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
@@ -636,6 +636,7 @@ class Hyperparameters:
 args, cli_args = Hyperparameters.from_args()
 
 def train(args, cli_args, GPT):
+    import torch
 
     # Check if environment variables are set by torchrun, otherwise default to single GPU
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
