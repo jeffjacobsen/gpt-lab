@@ -332,7 +332,7 @@ class Trainer:
         #        Training and validation       #
         ########################################
 
-        train_loader = distributed_data_generator(args.train_files, world_size * args.train_seq_len, rank, world_size)
+        train_loader = self.distributed_data_generator(args.train_files, world_size * args.train_seq_len, rank, world_size)
 
         training_time_ms = 0
         # start the clock
@@ -357,7 +357,7 @@ class Trainer:
                 val_tokens_used = val_batch_size * args.val_steps
                 print0(f"Validating on {val_tokens_used} tokens ({args.val_steps} steps with {val_batch_size} batch size)", console=True)
                 
-                val_loader = distributed_data_generator(args.val_files, val_batch_size, rank, world_size, print_stats=False)
+                val_loader = self.distributed_data_generator(args.val_files, val_batch_size, rank, world_size, print_stats=False)
                 val_loss = 0
                 with torch.no_grad():
                     for i in range(args.val_steps):
