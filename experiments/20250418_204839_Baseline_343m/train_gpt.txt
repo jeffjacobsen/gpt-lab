@@ -505,7 +505,7 @@ def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int
         tokens_per_file.append(file_tokens)
     
     # Calculate how many tokens we need for training
-    tokens_needed = args.train_steps * batch_size * args.grad_acc_steps
+    tokens_needed = args.train_steps * batch_size
     
     # Determine if we need to cycle and calculate epochs
     will_cycle = total_tokens < tokens_needed
@@ -540,8 +540,8 @@ class Hyperparameters:
     # data
     train_files = "data/fineweb*_train_*.bin" # input .bin to train on
     val_files = "data/fineweb*_val_*.bin" # input .bin to eval validation loss on
-    train_seq_len = 8*1024 # FlexAttention sequence length
-    val_seq_len = 16*1024 # FlexAttention sequence length for validation (should be able to fit more than train_seq_len)
+    train_seq_len = 16*1024 # FlexAttention sequence length
+    val_seq_len = 32*1024 # FlexAttention sequence length for validation (should be able to fit more than train_seq_len)
     # optimization loop
     val_steps = 10 # number of steps to run validation for
     train_steps = 20#_000 # number of training steps to run
