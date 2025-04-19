@@ -55,7 +55,7 @@ class Hyperparameters:
     seed: int
 
 
-def print0(s, console=False):
+def print0(s, console=True):
     # Ensure print0 works even if not master_process (but does nothing)
     if master_process and logfile:
         with open(logfile, "a") as f:
