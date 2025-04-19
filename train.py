@@ -76,10 +76,10 @@ def _load_data_shard(file: Path):
     return tokens
 
 class Trainer:
-    def __init__(this, args: Hyperparameters):
+    def __init__(self, args: Hyperparameters):
         this.args = args
 
-    def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
+    def distributed_data_generator(self, filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
         files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
         if not files:
             raise ValueError(f"No files found matching pattern: {filename_pattern}")
@@ -120,7 +120,7 @@ class Trainer:
             pos += batch_size
             yield inputs, targets
 
-    def train(model: nn.Module):
+    def train(self, model: nn.Module):
         import torch
         # Check if environment variables are set by torchrun, otherwise default to single GPU
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
