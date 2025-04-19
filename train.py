@@ -19,8 +19,6 @@ import csv
 from dataclasses import dataclass
 from torch import nn
 
-master_process = True;
-logfile = '';
 
 @dataclass
 class Hyperparameters:
@@ -55,13 +53,7 @@ class Hyperparameters:
     seed: int
 
 
-def print0(s, console=True):
-    # Ensure print0 works even if not master_process (but does nothing)
-    if master_process and logfile:
-        with open(logfile, "a") as f:
-            if console:
-                print(s)
-            print(s, file=f)
+
 
 def _load_data_shard(file: Path):
     header = torch.from_file(str(file), False, 256, dtype=torch.int32) # header is 256 int32
@@ -79,6 +71,16 @@ class Trainer:
     def __init__(self, args: Hyperparameters, cli_args):
         self.args = args
         self.cli_args = cli_args
+        self.master_process = False
+        self.logfile = None
+
+    def print0(self, s, console=True):
+    # Ensure self.print0 works even if not master_process (but does nothing)
+        if self.master_process and self.logfile:
+            with open(self.logfile, "a") as f:
+                if console:
+                    print(s)
+                print(s, file=f)
 
     def distributed_data_generator(self, filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
         files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
@@ -105,9 +107,9 @@ class Trainer:
         epochs = tokens_needed / total_tokens if total_tokens > 0 else 0
         
         if rank == 0 and print_stats:
-            print0(f"Total tokens across {len(files)} shard(s): {total_tokens:,}", console=True)
-            print0(f"Tokens needed for {self.args.train_steps} iterations: {tokens_needed:,}", console=True)
-            print0(f"Training will use approximately {epochs:.2f} epochs over the data", console=True)
+            self.print0(f"Total tokens across {len(files)} shard(s): {total_tokens:,}", console=True)
+            self.print0(f"Tokens needed for {self.args.train_steps} iterations: {tokens_needed:,}", console=True)
+            self.print0(f"Training will use approximately {epochs:.2f} epochs over the data", console=True)
         
         file_iter = itertools.cycle(files) if will_cycle else iter(files)
         tokens, pos = _load_data_shard(next(file_iter)), 0
@@ -149,7 +151,7 @@ class Trainer:
         if world_size > 1:
             dist.init_process_group(backend="nccl", device_id=device)
             dist.barrier()
-        master_process = (rank == 0)  # this process will do logging, checkpointing etc.
+        self.master_process = (rank == 0)  # this process will do logging, checkpointing etc.
 
         args = self.args
         #################################################
@@ -159,10 +161,9 @@ class Trainer:
 
 
         # begin logging
-        logfile = None
         experiment_dir_path = None # Define experiment_dir_path outside the if block
         metrics_csv_path = None # Define metrics_csv_path
-        if master_process:
+        if self.master_process:
             start_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             # 1. Create the experiment directory name
             experiment_dir_name = (f"{start_time}_{args.model_name}")
@@ -170,11 +171,11 @@ class Trainer:
             experiment_dir_path = Path("experiments") / experiment_dir_name
             os.makedirs(experiment_dir_path, exist_ok=True)
             # 3. Set the logfile path inside the experiment directory
-            logfile = experiment_dir_path / "training_log.txt"
+            self.logfile = experiment_dir_path / "training_log.txt"
             # 4. Set the metrics CSV file path
             metrics_csv_path = experiment_dir_path / "metrics.csv"
-            print0(f"Logging to: {logfile}", console=True)
-            print0(f"Metrics CSV: {metrics_csv_path}", console=True)
+            self.print0(f"Logging to: {self.logfile}", console=True)
+            self.print0(f"Metrics CSV: {metrics_csv_path}", console=True)
             # 5. Initialize metrics CSV file with headers
             with open(metrics_csv_path, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
@@ -182,12 +183,12 @@ class Trainer:
             # 6. Log any command-line arguments that were provided (overriding defaults)
             cli_arg_dict = {k: v for k, v in vars(self.cli_args).items() if v is not None}
             if cli_arg_dict:
-                print0("Command-line arguments overriding defaults:", console=True)
+                self.print0("Command-line arguments overriding defaults:", console=True)
                 for key, value in cli_arg_dict.items():
-                    print0(f"  --{key} = {value}", console=True)
-                print0("="*100, console=True)
+                    self.print0(f"  --{key} = {value}", console=True)
+                self.print0("="*100, console=True)
 
-            print0("Copying relevant files to experiment directory...")
+            self.print0("Copying relevant files to experiment directory...")
             files_to_copy = ["requirements.txt", sys.argv[0], "download_hellaswag.py", "download_fineweb.py"]
             for file_path_str in files_to_copy:
                 file_path = Path(file_path_str)
@@ -196,11 +197,11 @@ class Trainer:
                         # Use Path object methods for cleaner path manipulation
                         target_path = experiment_dir_path / f"{file_path.stem}.txt"
                         shutil.copy(str(file_path), str(target_path))
-                        print0(f"- Copied {file_path} to {target_path}")
+                        self.print0(f"- Copied {file_path} to {target_path}")
                     except Exception as e:
-                        print0(f"- Failed to copy {file_path}: {e}")
+                        self.print0(f"- Failed to copy {file_path}: {e}")
                 else:
-                    print0(f"- File not found, skipping: {file_path}")
+                    self.print0(f"- File not found, skipping: {file_path}")
 
             # Handle tokenizer separately as it's a .pkl file
             tokenizer_path = Path(f"data/{args.tokenizer}")
@@ -216,23 +217,23 @@ class Trainer:
                         f.write(f"Tokenizer Config ({args.tokenizer}):\n")
                         f.write("="*100 + "\n")
                         f.write(tokenizer_str)
-                    print0(f"- Saved tokenizer config to {tokenizer_log_path}")
+                    self.print0(f"- Saved tokenizer config to {tokenizer_log_path}")
                     del tokenizer_config # Free up memory
                 except Exception as e:
-                    print0(f"- Error processing tokenizer {tokenizer_path}: {e}")
+                    self.print0(f"- Error processing tokenizer {tokenizer_path}: {e}")
             else:
-                print0(f"- Tokenizer file not found: {tokenizer_path}")
+                self.print0(f"- Tokenizer file not found: {tokenizer_path}")
 
-            print0("="*100)
+            self.print0("="*100)
 
         # log information about the hardware/software environment this is running on
-        print0(f"Running Python {sys.version}")
-        print0(f"Running PyTorch {torch.version.__version__} compiled for CUDA {torch.version.cuda}")
+        self.print0(f"Running Python {sys.version}")
+        self.print0(f"Running PyTorch {torch.version.__version__} compiled for CUDA {torch.version.cuda}")
         def nvidia_smi():
             import subprocess  # avoid top level import
             return subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout
-        print0(nvidia_smi())
-        print0("="*100)
+        self.print0(nvidia_smi())
+        self.print0("="*100)
 
         #################################################
         #########      Seed for Reproducibility     #####
@@ -240,7 +241,7 @@ class Trainer:
 
         # Set the seed *before* initializing the model or optimizer
         if args.seed is not None:
-            print0(f"Setting random seed to {args.seed} for model initialization", console=True)
+            self.print0(f"Setting random seed to {args.seed} for model initialization", console=True)
             random.seed(args.seed)
             np.random.seed(args.seed)
             torch.manual_seed(args.seed)
@@ -255,8 +256,8 @@ class Trainer:
         ########################################
 
   
-        print0(f'{model.get_num_params()} parameters', console=True)
-        print0(model)
+        self.print0(f'{model.get_num_params()} parameters', console=True)
+        self.print0(model)
 
         # Set FP8 option based on hyperparameters
         model.lm_head.use_fp8 = args.use_fp8
@@ -282,11 +283,11 @@ class Trainer:
         #            Warmup kernels            #
         ########################################
 
-        print0("warming up kernels...", console=True)
+        self.print0("warming up kernels...", console=True)
 
         # Attempt to limit memory fragmentation
         if hasattr(torch.cuda, 'memory_stats'):
-            print0(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
+            self.print0(f"Initial GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
         # Warmup the training kernels, then re-initialize the state so we aren't cheating
         warmup_steps = 10
@@ -313,9 +314,9 @@ class Trainer:
         del initial_state # TODO optionally save initial state of model jic someone wants to test different seeds
 
         if hasattr(torch.cuda, 'memory_stats'):
-            print0(f"After warmup GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
+            self.print0(f"After warmup GPU memory: {torch.cuda.memory_allocated() // (1024 * 1024)} MB")
 
-        print0("kernels are toasty", console=True)
+        self.print0("kernels are toasty", console=True)
 
         ########################################
         #        Training and validation       #
@@ -344,7 +345,7 @@ class Trainer:
                 # Ensure we validate on enough tokens while keeping memory usage reasonable
                 val_batch_size = world_size * args.val_seq_len
                 val_tokens_used = val_batch_size * args.val_steps
-                print0(f"Validating on {val_tokens_used} tokens ({args.val_steps} steps with {val_batch_size} batch size)", console=True)
+                self.print0(f"Validating on {val_tokens_used} tokens ({args.val_steps} steps with {val_batch_size} batch size)", console=True)
                 
                 val_loader = self.distributed_data_generator(args.val_files, val_batch_size, rank, world_size, print_stats=False)
                 val_loss = 0
@@ -363,11 +364,11 @@ class Trainer:
                 
                 # Calculate average time per step up to this point
                 step_avg_ms = training_time_ms / max(step, 1) 
-                print0(f"step:{step}/{args.train_steps} val_loss:{val_loss:.4f} "
+                self.print0(f"step:{step}/{args.train_steps} val_loss:{val_loss:.4f} "
                         f"train_time:{training_time_ms:.0f}ms step_avg:{step_avg_ms:.2f}ms", console=True)
                 
                 # Log validation metrics to CSV
-                if master_process and metrics_csv_path:
+                if self.master_process and metrics_csv_path:
                     with open(metrics_csv_path, 'a', newline='') as csvfile:
                         writer = csv.writer(csvfile)
                         # Use .item() to get float from tensor for val_loss
@@ -378,13 +379,13 @@ class Trainer:
 
                 if last_step: # inside validation section to avoid the if check every training iteration
                     # 5. Save model checkpoint inside the experiment directory
-                    if master_process and args.save_model and experiment_dir_path:
+                    if self.master_process and args.save_model and experiment_dir_path:
                         log = dict(step=step, model=model.state_dict(), optimizers=[opt.state_dict() for opt in optimizers])
                         # Ensure experiment_dir_path exists (though it should from earlier)
                         os.makedirs(experiment_dir_path, exist_ok=True)
                         save_path = experiment_dir_path / f"state_step{step:06d}.pt"
                         torch.save(log, str(save_path))
-                        print0(f"Saved checkpoint to {save_path}", console=True)
+                        self.print0(f"Saved checkpoint to {save_path}", console=True)
                     # the last step only has the validation loop, so break to avoid training
                     break
                 
@@ -410,7 +411,7 @@ class Trainer:
                 for param in model.parameters():
                     dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
 
-            optimizers_set_lr()
+            optimizers_set_lr(step)
             # step the optimizers
             for opt in optimizers:
                 opt.step()
@@ -420,14 +421,14 @@ class Trainer:
             # calculate *approximate* cumulative time and step average for logging during training
             # Note: This is approximate because it includes the time for the current step's forward/backward pass
             # The more precise time is recorded just before validation
-            if master_process:
+            if self.master_process:
                 torch.cuda.synchronize() # Ensure accurate timing up to this point
                 # Calculate time elapsed since the end of the last validation phase
                 current_segment_duration_ms = 1000 * (time.perf_counter() - t0) 
                 # Calculate the *true* approximate cumulative time
                 approx_cumulative_time_ms = training_time_ms + current_segment_duration_ms
                 approx_step_avg_ms = approx_cumulative_time_ms / (step + 1)
-                print0(f"step:{step+1}/{args.train_steps} "
+                self.print0(f"step:{step+1}/{args.train_steps} "
                         f"train_time:{approx_cumulative_time_ms:.0f}ms "
                         f"step_avg:{approx_step_avg_ms:.2f}ms", console=True)
                 
@@ -439,7 +440,7 @@ class Trainer:
                         writer.writerow([step + 1, "train", "", f"{approx_cumulative_time_ms:.0f}", f"{approx_step_avg_ms:.2f}"])
 
 
-        print0(f"peak memory allocated: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB "
+        self.print0(f"peak memory allocated: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB "
             f"reserved: {torch.cuda.max_memory_reserved() // 1024 // 1024} MiB", console=True)
 
         ########################################
@@ -592,7 +593,7 @@ class Trainer:
                 dist.all_reduce(total_tensor, op=dist.ReduceOp.SUM)
             
             # Calculate final metrics on master process
-            if master_process:
+            if self.master_process:
                 num_correct = int(correct_tensor.item())
                 num_correct_norm = int(correct_norm_tensor.item())
                 num_total = int(total_tensor.item())
@@ -624,20 +625,20 @@ class Trainer:
                 ci = wilson_conf_interval(num_correct, num_total)
                 ci_norm = wilson_conf_interval(num_correct_norm, num_total)
                 
-                print0(f"HellaSwag evaluation complete - {num_total} examples", console=True)
-                print0(f"Accuracy: {num_correct}/{num_total}={accuracy:.4f} "
+                self.print0(f"HellaSwag evaluation complete - {num_total} examples", console=True)
+                self.print0(f"Accuracy: {num_correct}/{num_total}={accuracy:.4f} "
                         f"[95% CI: {ci[0]:.3f}-{ci[1]:.3f}]", console=True)
-                print0(f"Normalized accuracy: {num_correct_norm}/{num_total}={accuracy_norm:.4f} "
+                self.print0(f"Normalized accuracy: {num_correct_norm}/{num_total}={accuracy_norm:.4f} "
                         f"[95% CI: {ci_norm[0]:.3f}-{ci_norm[1]:.3f}]", console=True)
 
         # After training and sample generations, evaluate on HellaSwag
         hellaswag_path = "./data/hellaswag_val.jsonl" 
         # Check if the HellaSwag data file exists
         if os.path.exists(hellaswag_path):
-            print0(f"Found HellaSwag dataset at {hellaswag_path}", console=True)
+            self.print0(f"Found HellaSwag dataset at {hellaswag_path}", console=True)
             evaluate_hellaswag(model, hellaswag_path, limit=1014) # 1014 is largest possible
         else:
-            print0(f"HellaSwag dataset not found at {hellaswag_path}, skipping evaluation.", console=True)
+            self.print0(f"HellaSwag dataset not found at {hellaswag_path}, skipping evaluation.", console=True)
 
         if world_size > 1:
             dist.destroy_process_group()
@@ -673,8 +674,8 @@ class Trainer:
             return decode(y.tolist())
 
         # Then at the end of training:
-        if master_process: 
-            print0("-"*10 + " EXAMPLE MODEL GENERATIONS AFTER TRAINING " + "-"*10)
+        if self.master_process: 
+            self.print0("-"*10 + " EXAMPLE MODEL GENERATIONS AFTER TRAINING " + "-"*10)
             prompts = [
                 "Once upon a time,",
                 "The meaning of life is",
@@ -683,4 +684,4 @@ class Trainer:
             ]
             for prompt in prompts:
                 continuation = sample_from_model(model, prompt, max_new_tokens=16)
-                print0(continuation, console=True)
+                self.print0(continuation, console=True)
