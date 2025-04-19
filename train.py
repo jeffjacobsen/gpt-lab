@@ -76,8 +76,8 @@ def _load_data_shard(file: Path):
     return tokens
 
 class Trainer:
-    def __init__(args: Hyperparameters):
-
+    def __init__(this, args: Hyperparameters):
+        this.args = args
 
     def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
         files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
