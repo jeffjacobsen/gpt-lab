@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
+
 import shutil
 import sys
 import tiktoken
@@ -17,6 +17,7 @@ import itertools
 from pathlib import Path
 import csv
 from dataclasses import dataclass
+from torch import nn
 
 master_process = True;
 logfile = '';
