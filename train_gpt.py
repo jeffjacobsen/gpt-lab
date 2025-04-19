@@ -552,6 +552,25 @@ for key, value in vars(cli_args).items():
     if value is not None:  # Only update if argument was provided
         setattr(args, key, value)
 
+        #################################################
+        #########      Seed for Reproducibility     #####
+        #################################################
+
+        # Set the seed *before* initializing the model or optimizer
+        if args.seed is not None:
+            random.seed(args.seed)
+            np.random.seed(args.seed)
+            torch.manual_seed(args.seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(args.seed) # Important for multi-GPU consistency
+                # The following might be needed for full determinism, but can impact performance
+                # torch.backends.cudnn.deterministic = True
+                # torch.backends.cudnn.benchmark = False
+
+        ########################################
+        #    Construct model and optimizer     #
+        ########################################
+
 model: nn.Module = GPT(vocab_size=args.vocab_size, 
                     num_layers=args.num_layers,
                     num_val_emb=args.num_val_emb,

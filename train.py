@@ -236,27 +236,9 @@ class Trainer:
         self.print0(nvidia_smi())
         self.print0("="*100)
 
-        #################################################
-        #########      Seed for Reproducibility     #####
-        #################################################
-
-        # Set the seed *before* initializing the model or optimizer
         if args.seed is not None:
             self.print0(f"Setting random seed to {args.seed} for model initialization", console=True)
-            random.seed(args.seed)
-            np.random.seed(args.seed)
-            torch.manual_seed(args.seed)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed_all(args.seed) # Important for multi-GPU consistency
-                # The following might be needed for full determinism, but can impact performance
-                # torch.backends.cudnn.deterministic = True
-                # torch.backends.cudnn.benchmark = False
 
-        ########################################
-        #    Construct model and optimizer     #
-        ########################################
-
-  
         self.print0(f'{model.get_num_params()} parameters', console=True)
         self.print0(model)
 
@@ -637,7 +619,7 @@ class Trainer:
         # Check if the HellaSwag data file exists
         if os.path.exists(hellaswag_path):
             self.print0(f"Found HellaSwag dataset at {hellaswag_path}", console=True)
-            evaluate_hellaswag(model, hellaswag_path, limit=10) # 1014 is largest possible
+            evaluate_hellaswag(model, hellaswag_path, limit=1014) # 1014 is largest possible
         else:
             self.print0(f"HellaSwag dataset not found at {hellaswag_path}, skipping evaluation.", console=True)
 
