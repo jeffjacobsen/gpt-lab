@@ -552,7 +552,7 @@ for key, value in vars(cli_args).items():
     if value is not None:  # Only update if argument was provided
         setattr(args, key, value)
   
-
+print(args)
 # Train
 trainer = Trainer(args)
 Trainer.train(GPT)
