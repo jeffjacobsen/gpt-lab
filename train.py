@@ -21,9 +21,7 @@ logfile = '';
 
 @dataclass
 class Hyperparameters:
-    """
-    default values are set to fit on a 2x GPUs w/ 8GB of VRAM each, but are not necessarily optimal
-    """
+
     model_name: str
     # data
     train_files: str # input .bin to train on
@@ -74,7 +72,10 @@ def _load_data_shard(file: Path):
         assert nbytes == 2 * num_tokens, "number of tokens read does not match header"
     return tokens
 
-class Trainer(Hyperparameters):
+class Trainer:
+    def __init__(self, args: Hyperparameters):
+        self.args = args
+
 
     def distributed_data_generator(filename_pattern: str, batch_size: int, rank: int, world_size: int, print_stats=True):
         files = [Path(file) for file in sorted(glob.glob(filename_pattern))]
