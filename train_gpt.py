@@ -546,7 +546,12 @@ parser.add_argument('--model_name', type=str, help='Model name for logging')
 parser.add_argument('--seed', type=int, help='Random seed for initialization control')
     
 cli_args = parser.parse_args()
-print(cli_args)
+
+# Update args with command-line arguments that were provided
+for key, value in vars(cli_args).items():
+    if value is not None:  # Only update if argument was provided
+        setattr(args, key, value)
+print(args)
 exit()
 
 '''       def __post_init__(self):
