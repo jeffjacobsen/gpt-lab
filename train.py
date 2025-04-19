@@ -121,7 +121,7 @@ class Trainer:
             pos += batch_size
             yield inputs, targets
 
-    def train(self, model):
+    def train(self, model, optimizers):
         import torch
         # Check if environment variables are set by torchrun, otherwise default to single GPU
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
@@ -268,31 +268,6 @@ class Trainer:
             for param in model.parameters():
                 dist.broadcast(param.detach(), 0)
 
-        # collect the parameters to optimize
-        hidden_matrix_params = [p for n, p in model.blocks.named_parameters() if p.ndim >= 2 and "embed" not in n]
-        embed_params = [p for n, p in model.named_parameters() if "embed" in n]
-        scalar_params = [p for p in model.parameters() if p.ndim < 2]
-        head_params = [model.lm_head.weight]
-
-        # init the optimizer(s)
-        adam_params = [dict(params=head_params, lr=0.22), dict(params=embed_params, lr=0.6), dict(params=scalar_params, lr=0.04)]
-        # small adam epsilon by @YouJiacheng. this is an alternate method of fixing the world_size dependence
-        # discovered by @fernbear.bsky.social https://x.com/hi_tysam/status/1879692937589875094
-        optimizer1 = torch.optim.Adam(adam_params, betas=(0.8, 0.95), eps=1e-10, fused=True)
-
-        # For single GPU case, we need to modify how Muon is initialized
-        if world_size == 1:
-            # Create update buffer for single GPU
-            for param in hidden_matrix_params:
-                param.requires_grad_(True)
-            optimizer2 = Muon(hidden_matrix_params, lr=0.05, momentum=0.95, rank=rank, world_size=world_size)
-        else:
-            optimizer2 = Muon(hidden_matrix_params, lr=0.05, momentum=0.95, rank=rank, world_size=world_size)
-
-        optimizers = [optimizer1, optimizer2]
-        for opt in optimizers:
-            for group in opt.param_groups:
-                group["initial_lr"] = group["lr"]
 
         # learning rate schedule: stable then decay
         def get_lr(step: int):
