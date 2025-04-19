@@ -551,37 +551,9 @@ cli_args = parser.parse_args()
 for key, value in vars(cli_args).items():
     if value is not None:  # Only update if argument was provided
         setattr(args, key, value)
-print(args)
-exit()
+  
 
-'''       def __post_init__(self):
-        # Validate and set derived parameters
-        assert self.train_seq_len % 128 == 0, f"train_seq_len must be multiple of 128, got {self.train_seq_len}"
-        assert self.val_seq_len % 128 == 0, f"val_seq_len must be multiple of 128, got {self.val_seq_len}"
-        assert self.grad_acc_steps >= 1, f"grad_acc steps must be int >= 1"
-        if self.head_dim is None:
-            self.head_dim = self.model_dim // self.num_heads
-        assert self.head_dim in [2 ** i for i in range(1, 10)], f"head_dim must be a power of 2, got {self.head_dim}"
-        assert self.mlp_ratio > 0, f"mlp_ratio must be positive, got {self.mlp_ratio}"
-        assert self.num_layers // 2 >= self.num_val_emb, \
-            f"num_layers // 2 (={self.num_layers // 2}) must be greater than or equal num_val_emb (={self.num_val_emb})"
-        assert self.num_layers % 2 == 0, f"Number of layers ({self.num_layers}) must be even for skip connections"
-     
-
-        
-        # Update instance with command-line arguments that were provided
-        for key, value in vars(args).items():
-            if value is not None:  # Only update if argument was provided
-                setattr(instance, key, value)
-        
-        # Run post_init validations after applying CLI arguments
-        instance.__post_init__()
-        
-        return instance, args
-'''    
-
-
-# Parse arguments and create Hyperparameters instance
+# Train
 trainer = Trainer(args)
 Trainer.train(GPT)
 
