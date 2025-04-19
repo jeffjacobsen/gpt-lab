@@ -106,7 +106,7 @@ class Trainer:
         
         if rank == 0 and print_stats:
             print0(f"Total tokens across {len(files)} shard(s): {total_tokens:,}", console=True)
-            print0(f"Tokens needed for {args.train_steps} iterations: {tokens_needed:,}", console=True)
+            print0(f"Tokens needed for {self.args.train_steps} iterations: {tokens_needed:,}", console=True)
             print0(f"Training will use approximately {epochs:.2f} epochs over the data", console=True)
         
         file_iter = itertools.cycle(files) if will_cycle else iter(files)
