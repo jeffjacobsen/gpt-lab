@@ -121,7 +121,7 @@ class Trainer:
             pos += batch_size
             yield inputs, targets
 
-    def train(self, model: nn.Module):
+    def train(model: nn.Module):
         import torch
         # Check if environment variables are set by torchrun, otherwise default to single GPU
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
