@@ -176,6 +176,11 @@ def main():
                 # Stop if we've reached the maximum number of shards
                 if args.num_shards is not None and shard_index >= args.num_shards + 1: # +1 since 0 is val
                     print(f"Reached maximum number of shards ({args.num_shards}). Stopping.")
+                    # VERY IMPORTANT: close and join the pool
+                    it.close()
+                    it.join()
+                    pool.close()
+                    pool.join()
                     break
                     
                 progress_bar = None
