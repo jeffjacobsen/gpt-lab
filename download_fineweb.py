@@ -152,8 +152,7 @@ def main():
         token_count = 0
         progress_bar = None
         # Pass the partial function which only captures the path (a string)
-        it = pool.imap(tokenize_partial, fw, chunksize=16)
-        for tokens in it:
+        for tokens in pool.imap(tokenize_partial, fw, chunksize=16):
             # is there enough space in the current shard for the new tokens?
             if token_count + len(tokens) < args.shard_size:
                 # simply append tokens to current shard
@@ -177,11 +176,6 @@ def main():
                 # Stop if we've reached the maximum number of shards
                 if args.num_shards is not None and shard_index >= args.num_shards + 1: # +1 since 0 is val
                     print(f"Reached maximum number of shards ({args.num_shards}). Stopping.")
-                    # VERY IMPORTANT: close and join the pool
-                    it.close() # close the iterator
-                    it.join()  # wait for iterator tasks to complete
-                    pool.close() # stop accepting new tasks
-                    pool.join() # wait for the workers to exit
                     break
                     
                 progress_bar = None
